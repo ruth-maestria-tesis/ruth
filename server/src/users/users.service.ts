@@ -8,6 +8,7 @@ import {
 } from '../auth/schemas/refresh-token.schema';
 import { AppException } from '../common/errors/app.exception';
 import { Paginated } from '../common/pagination/pagination.dto';
+import { paginate, SortFields } from '../common/pagination/paginate';
 import { hashPassword } from '../common/security/password';
 import { escapeRegex } from '../common/utils/escape-regex';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -15,7 +16,12 @@ import { QueryUsersDto } from './dto/query-users.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { User, UserDocument } from './schemas/user.schema';
 
-const USER_SORT_FIELDS = ['email', 'firstName', 'lastName', 'createdAt'];
+const USER_SORT_FIELDS: SortFields = {
+  email: 'email',
+  firstName: 'firstName',
+  lastName: 'lastName',
+  createdAt: 'createdAt',
+};
 
 /** Fields exposed by the faculty autocomplete (M7); `id` comes from the toJSON virtual. */
 const FACULTY_PROJECTION =
@@ -91,19 +97,16 @@ export class UsersService {
       const rx = new RegExp(escapeRegex(query.q), 'i');
       filter.$or = [{ firstName: rx }, { lastName: rx }, { email: rx }];
     }
-    const sortField =
-      query.sort && USER_SORT_FIELDS.includes(query.sort)
-        ? query.sort
-        : 'createdAt';
-    const [items, total] = await Promise.all([
-      this.model
-        .find(filter)
-        .sort({ [sortField]: query.order === 'desc' ? -1 : 1 })
-        .skip((query.page - 1) * query.limit)
-        .limit(query.limit),
-      this.model.countDocuments(filter),
-    ]);
-    return { items, total, page: query.page, limit: query.limit };
+    return paginate(this.model, filter, query, {
+      sortFields: USER_SORT_FIELDS,
+      defaultSort: 'createdAt',
+    });
+  }
+
+  /** Bulk lookup used by other modules to validate references (theses, assignments). */
+  findManyByIds(ids: readonly string[]): Promise<UserDocument[]> {
+    const valid = ids.filter((id) => isValidObjectId(id));
+    return this.model.find({ _id: { $in: valid } }).exec();
   }
 
   /** Autocomplete for juror selection (CU-01): active internal and external jurors. */

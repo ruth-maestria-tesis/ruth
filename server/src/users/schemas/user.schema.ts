@@ -1,8 +1,9 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Role } from '@thesis/shared';
 import { HydratedDocument, Schema as MongooseSchema, Types } from 'mongoose';
+import { applyJsonTransform } from '../../common/mongoose/json-transform';
 
-@Schema({ _id: false })
+@Schema({ _id: false, id: false })
 export class JurorProfile {
   @Prop({ required: true, trim: true })
   institution!: string;
@@ -22,7 +23,7 @@ export class JurorProfile {
 }
 export const JurorProfileSchema = SchemaFactory.createForClass(JurorProfile);
 
-@Schema({ _id: false })
+@Schema({ _id: false, id: false })
 export class StudentProfile {
   @Prop({ required: true, trim: true })
   studentCode!: string;
@@ -36,18 +37,7 @@ export class StudentProfile {
 export const StudentProfileSchema =
   SchemaFactory.createForClass(StudentProfile);
 
-@Schema({
-  timestamps: true,
-  toJSON: {
-    virtuals: true,
-    transform: (_doc: unknown, ret: Record<string, unknown>) => {
-      delete ret._id;
-      delete ret.__v;
-      delete ret.passwordHash;
-      return ret;
-    },
-  },
-})
+@Schema({ timestamps: true })
 export class User {
   @Prop({ required: true, unique: true, lowercase: true, trim: true })
   email!: string;
@@ -82,5 +72,8 @@ export class User {
 }
 
 export type UserDocument = HydratedDocument<User>;
-export const UserSchema = SchemaFactory.createForClass(User);
+export const UserSchema = applyJsonTransform(
+  SchemaFactory.createForClass(User),
+  ['passwordHash'],
+);
 UserSchema.index({ roles: 1, isActive: 1 });

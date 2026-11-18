@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { ErrorCode } from '@thesis/shared';
 import type { Response } from 'express';
+import { Error as MongooseError } from 'mongoose';
 import { AppException } from '../errors/app.exception';
 
 export interface ErrorBody {
@@ -22,6 +23,7 @@ const STATUS_CODES: Record<number, ErrorCode> = {
   403: ErrorCode.AUTH_FORBIDDEN,
   404: ErrorCode.NOT_FOUND,
   409: ErrorCode.CONFLICT,
+  413: ErrorCode.FILE_TOO_LARGE,
   429: ErrorCode.RATE_LIMITED,
 };
 
@@ -90,6 +92,27 @@ export function toErrorBody(exception: unknown): ErrorBody {
           ? (response as { message: string }).message
           : exception.message;
     return { statusCode, code, message };
+  }
+
+  if (exception instanceof MongooseError.ValidationError) {
+    return {
+      statusCode: 400,
+      code: ErrorCode.VALIDATION_FAILED,
+      message: 'Validation failed',
+      details: Object.values(exception.errors).map((e) => ({
+        path: e.path,
+        message: e.message,
+      })),
+    };
+  }
+
+  if (exception instanceof MongooseError.CastError) {
+    return {
+      statusCode: 400,
+      code: ErrorCode.VALIDATION_FAILED,
+      message: 'Invalid value',
+      details: [{ path: exception.path }],
+    };
   }
 
   if (isMongoDuplicateKey(exception)) {

@@ -3,8 +3,10 @@ import {
   HttpStatus,
   InternalServerErrorException,
   NotFoundException,
+  PayloadTooLargeException,
 } from '@nestjs/common';
 import { ErrorCode } from '@thesis/shared';
+import { Error as MongooseError } from 'mongoose';
 import { AppException } from '../errors/app.exception';
 import { toErrorBody } from './all-exceptions.filter';
 
@@ -82,15 +84,54 @@ describe('toErrorBody', () => {
     });
   });
 
-  it('maps other plain 4xx errors such as 413 to their status', () => {
-    const err = Object.assign(new Error('request entity too large'), {
-      name: 'PayloadTooLargeError',
-      statusCode: 413,
+  it('maps other plain 4xx errors such as 415 to their status', () => {
+    const err = Object.assign(new Error('unsupported charset'), {
+      name: 'UnsupportedMediaTypeError',
+      statusCode: 415,
     });
     expect(toErrorBody(err)).toEqual({
-      statusCode: 413,
+      statusCode: 415,
       code: ErrorCode.HTTP_ERROR,
       message: 'Request error',
     });
+  });
+
+  it('maps a Mongoose ValidationError to 400 VALIDATION_FAILED with paths', () => {
+    const err = new MongooseError.ValidationError();
+    err.addError(
+      'firstName',
+      new MongooseError.ValidatorError({
+        path: 'firstName',
+        message: 'Path `firstName` is required.',
+      }),
+    );
+    expect(toErrorBody(err)).toEqual({
+      statusCode: 400,
+      code: ErrorCode.VALIDATION_FAILED,
+      message: 'Validation failed',
+      details: [
+        { path: 'firstName', message: 'Path `firstName` is required.' },
+      ],
+    });
+  });
+
+  it('maps a Mongoose CastError to 400 VALIDATION_FAILED', () => {
+    const err = new MongooseError.CastError('ObjectId', 'nope', 'programId');
+    expect(toErrorBody(err)).toEqual({
+      statusCode: 400,
+      code: ErrorCode.VALIDATION_FAILED,
+      message: 'Invalid value',
+      details: [{ path: 'programId' }],
+    });
+  });
+
+  it('maps 413 (multer file size limit) to FILE_TOO_LARGE', () => {
+    expect(toErrorBody(new PayloadTooLargeException('File too large'))).toEqual(
+      {
+        statusCode: 413,
+        code: ErrorCode.FILE_TOO_LARGE,
+        message: 'File too large',
+      },
+    );
   });
 });

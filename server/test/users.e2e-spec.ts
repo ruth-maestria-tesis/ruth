@@ -394,4 +394,25 @@ describe('Users (e2e)', () => {
       'USER_NOT_FOUND',
     );
   });
+
+  it('rejects null for a required field with 400 instead of 500', async () => {
+    const target = await createUser(app, { roles: [Role.COORDINATOR] });
+    const res = await admin
+      .patch(`/api/users/${target.id as string}`)
+      .send({ firstName: null })
+      .expect(400);
+    expect(res.body.code).toBe('VALIDATION_FAILED');
+  });
+
+  it('rejects names longer than 100 characters', async () => {
+    const res = await admin
+      .post('/api/users')
+      .send({
+        ...newCoordinator,
+        email: 'long@test.edu.co',
+        firstName: 'x'.repeat(101),
+      })
+      .expect(400);
+    expect(res.body.code).toBe('VALIDATION_FAILED');
+  });
 });

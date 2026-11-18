@@ -19,6 +19,8 @@ export async function createTestApp(): Promise<INestApplication> {
   const app = moduleRef.createNestApplication();
   configureApp(app);
   await app.init();
+  // Unique indexes must exist before the first test, otherwise duplicate-key tests race index builds.
+  await app.get<Connection>(getConnectionToken()).syncIndexes();
   return app;
 }
 

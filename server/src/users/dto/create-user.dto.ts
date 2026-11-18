@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
   ArrayMinSize,
   ArrayUnique,
   IsArray,
@@ -19,6 +20,7 @@ import { Role } from '@thesis/shared';
 export class JurorProfileDto {
   @IsString()
   @IsNotEmpty()
+  @MaxLength(200)
   institution!: string;
 
   @IsBoolean()
@@ -26,21 +28,26 @@ export class JurorProfileDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(100)
   highestDegree?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(100)
   country?: string;
 
   @IsOptional()
   @IsArray()
+  @ArrayMaxSize(20)
   @IsString({ each: true })
+  @MaxLength(100, { each: true })
   expertise?: string[];
 }
 
 export class StudentProfileDto {
   @IsString()
   @IsNotEmpty()
+  @MaxLength(30)
   studentCode!: string;
 
   @IsOptional()
@@ -67,14 +74,17 @@ export class CreateUserDto {
 
   @IsString()
   @IsNotEmpty()
+  @MaxLength(100)
   firstName!: string;
 
   @IsString()
   @IsNotEmpty()
+  @MaxLength(100)
   lastName!: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(30)
   documentId?: string;
 
   @IsArray()

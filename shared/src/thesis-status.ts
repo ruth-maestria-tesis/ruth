@@ -26,3 +26,42 @@ export const THESIS_PROGRESS: Readonly<Record<ThesisStatus, number>> = {
   [ThesisStatus.COMPLETED_APPROVED]: 100,
   [ThesisStatus.COMPLETED_FAILED]: 100,
 };
+
+/** Allowed transitions (spec §4). Terminal statuses map to an empty list. */
+export const THESIS_TRANSITIONS: Readonly<
+  Record<ThesisStatus, readonly ThesisStatus[]>
+> = {
+  [ThesisStatus.SUBMITTED]: [ThesisStatus.JURORS_ASSIGNED],
+  [ThesisStatus.JURORS_ASSIGNED]: [
+    ThesisStatus.UNDER_EVALUATION,
+    ThesisStatus.PENDING_JUROR_REPLACEMENT,
+  ],
+  [ThesisStatus.PENDING_JUROR_REPLACEMENT]: [
+    ThesisStatus.JURORS_ASSIGNED,
+    ThesisStatus.UNDER_EVALUATION,
+  ],
+  [ThesisStatus.UNDER_EVALUATION]: [
+    ThesisStatus.REVISIONS_IN_PROGRESS,
+    ThesisStatus.READY_FOR_DEFENSE,
+    ThesisStatus.IN_DISPUTE,
+    ThesisStatus.NOT_APPROVED,
+  ],
+  [ThesisStatus.IN_DISPUTE]: [
+    ThesisStatus.REVISIONS_IN_PROGRESS,
+    ThesisStatus.READY_FOR_DEFENSE,
+    ThesisStatus.NOT_APPROVED,
+  ],
+  [ThesisStatus.REVISIONS_IN_PROGRESS]: [ThesisStatus.READY_FOR_DEFENSE],
+  [ThesisStatus.READY_FOR_DEFENSE]: [ThesisStatus.DEFENSE_SCHEDULED],
+  [ThesisStatus.DEFENSE_SCHEDULED]: [
+    ThesisStatus.COMPLETED_APPROVED,
+    ThesisStatus.COMPLETED_FAILED,
+  ],
+  [ThesisStatus.NOT_APPROVED]: [],
+  [ThesisStatus.COMPLETED_APPROVED]: [],
+  [ThesisStatus.COMPLETED_FAILED]: [],
+};
+
+export const TERMINAL_THESIS_STATUSES: readonly ThesisStatus[] = (
+  Object.keys(THESIS_TRANSITIONS) as ThesisStatus[]
+).filter((s) => THESIS_TRANSITIONS[s].length === 0);
