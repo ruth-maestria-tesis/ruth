@@ -105,6 +105,11 @@ export class AuthService {
 
     const user = await this.users.findById(payload.sub).catch(() => null);
     if (!user) throw refreshInvalid();
+    // External-only users have no refresh sessions (RF-J14); e.g. roles changed after login.
+    if (isExternalOnly(user.roles)) {
+      await this.revokeFamily(claimed.familyId);
+      throw refreshInvalid();
+    }
     if (!user.isActive) {
       await this.revokeFamily(claimed.familyId);
       throw new AppException(

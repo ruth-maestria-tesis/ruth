@@ -124,6 +124,11 @@ describe('Users (e2e)', () => {
       .post('/api/auth/login')
       .send({ email: juror.email, password: TEST_PASSWORD })
       .expect(401);
+    const doc = await app
+      .get<Model<User>>(getModelToken(User.name))
+      .findById(juror._id)
+      .select('+passwordHash');
+    expect(doc?.passwordHash).toBeUndefined();
   });
 
   it('rejects invalid payloads with VALIDATION_FAILED', async () => {

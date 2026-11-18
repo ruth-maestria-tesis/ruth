@@ -130,6 +130,22 @@ describe('Auth (e2e)', () => {
     expect(res.body.user.email).toBe(email);
   });
 
+  it('refuses refresh once the user became external-only', async () => {
+    const juror = await createUser(app, { roles: [Role.INTERNAL_JUROR] });
+    const refreshToken = cookiesOf(
+      await login({ email: juror.email, password: TEST_PASSWORD }).expect(200),
+    ).refresh_token;
+    // Direct model write so sessions are not revoked by UsersService.
+    await app
+      .get<Model<User>>(getModelToken(User.name))
+      .updateOne({ _id: juror._id }, { roles: [Role.EXTERNAL_JUROR] });
+    const res = await request(http(app))
+      .post('/api/auth/refresh')
+      .set('Cookie', `refresh_token=${refreshToken}`)
+      .expect(401);
+    expect(res.body.code).toBe('AUTH_REFRESH_INVALID');
+  });
+
   it('rotates refresh tokens and revokes the family on reuse', async () => {
     const server = http(app);
     const first = cookiesOf(
