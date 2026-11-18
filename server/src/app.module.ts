@@ -12,6 +12,7 @@ import { RolesGuard } from './common/guards/roles.guard';
 import { envValidationSchema } from './config/env.validation';
 import { FilesModule } from './files/files.module';
 import { HealthController } from './health.controller';
+import { SettingsModule } from './settings/settings.module';
 import { ThesesModule } from './theses/theses.module';
 import { UsersModule } from './users/users.module';
 import { WorkflowModule } from './workflow/workflow.module';
@@ -41,6 +42,7 @@ import { WorkflowModule } from './workflow/workflow.module';
     CatalogsModule,
     FilesModule,
     WorkflowModule,
+    SettingsModule,
     ThesesModule,
   ],
   controllers: [HealthController],
