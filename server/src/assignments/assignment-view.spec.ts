@@ -75,4 +75,19 @@ describe('toAssignmentView (sugerencia 8 countdown)', () => {
       ).hasExternalLink,
     ).toBe(false);
   });
+
+  it('reports no link for a declined assignment even with a future expiry', () => {
+    const now = new Date('2026-11-19T15:00:00Z');
+    expect(
+      toAssignmentView(
+        {
+          ...base,
+          status: AssignmentStatus.DECLINED,
+          externalTokenExpiresAt: new Date('2027-01-01'),
+        },
+        now,
+        NONE,
+      ).hasExternalLink,
+    ).toBe(false);
+  });
 });

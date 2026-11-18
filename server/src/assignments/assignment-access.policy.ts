@@ -15,6 +15,7 @@ export function canViewAssignment(
   user: AuthUser,
   a: { id: string; jurorId: Types.ObjectId },
 ): boolean {
+  if (user.scope) return isAssignmentOwner(user, a);
   if (user.roles.includes(Role.ADMIN) || user.roles.includes(Role.COORDINATOR))
     return true;
   return isAssignmentOwner(user, a);

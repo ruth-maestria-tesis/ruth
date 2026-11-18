@@ -14,4 +14,13 @@ describe('external token (RF-J14)', () => {
       'http://localhost:3000/auth/external-access?token=abc_-1',
     );
   });
+
+  it('keeps a path in the client URL', () => {
+    expect(externalAccessUrl('http://x/app', 't')).toBe(
+      'http://x/app/auth/external-access?token=t',
+    );
+    expect(externalAccessUrl('http://x/app/', 't')).toBe(
+      'http://x/app/auth/external-access?token=t',
+    );
+  });
 });

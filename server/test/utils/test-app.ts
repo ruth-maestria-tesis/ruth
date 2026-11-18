@@ -80,7 +80,7 @@ export async function loginAgent(
 /** Agent authenticated with a directly signed access token (e.g. external jurors, scoped sessions). */
 export async function signedAgent(
   app: INestApplication,
-  user: { id: unknown; email: string; roles: Role[] },
+  user: { id?: unknown; email: string; roles: Role[] },
   scope?: { assignmentIds: string[] },
 ): Promise<TestAgent> {
   const token = await app.get(JwtService).signAsync(
@@ -182,9 +182,10 @@ export const DOCX_BYTES = Buffer.concat([
 
 /** supertest parser that collects binary responses into a Buffer. */
 export const binaryParser = (
-  res: NodeJS.ReadableStream,
+  response: unknown,
   cb: (err: Error | null, body: Buffer) => void,
 ) => {
+  const res = response as NodeJS.ReadableStream;
   const chunks: Buffer[] = [];
   res.on('data', (c: Buffer) => chunks.push(c));
   res.on('end', () => cb(null, Buffer.concat(chunks)));

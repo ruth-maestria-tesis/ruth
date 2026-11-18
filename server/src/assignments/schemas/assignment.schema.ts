@@ -33,7 +33,10 @@ export class Assignment {
   })
   status!: AssignmentStatus;
 
-  /** true while PENDING or ACCEPTED; backs the partial unique indexes below. */
+  /**
+   * true while PENDING or ACCEPTED; backs the partial unique indexes below.
+   * Always $set together with status.
+   */
   @Prop({ required: true, default: true })
   isActive!: boolean;
 

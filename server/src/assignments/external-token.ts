@@ -8,7 +8,10 @@ export function newExternalToken(): { token: string; hash: string } {
 }
 
 export function externalAccessUrl(clientUrl: string, token: string): string {
-  const url = new URL('/auth/external-access', clientUrl);
+  const url = new URL(
+    'auth/external-access',
+    clientUrl.endsWith('/') ? clientUrl : `${clientUrl}/`,
+  );
   url.searchParams.set('token', token);
   return url.toString();
 }

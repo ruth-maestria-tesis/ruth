@@ -41,7 +41,7 @@ describe('paginate collation', () => {
     return { model: model as unknown as Model<unknown>, query, count };
   };
   const opts = { sortFields: { code: 'code' }, defaultSort: 'code' };
-  const q = { page: 1, limit: 10 };
+  const q = { page: 1, limit: 10, order: 'asc' as const };
 
   it('applies the collation to find and countDocuments when given', async () => {
     const { model, query, count } = makeModel();

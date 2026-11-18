@@ -47,4 +47,14 @@ describe('assignment access', () => {
       canViewAssignment({ ...coordinator, roles: [Role.STUDENT] }, a),
     ).toBe(false);
   });
+
+  it('a scoped session never gets coordinator or admin access', () => {
+    const scoped = {
+      id: 'c',
+      email: 'c@x.co',
+      roles: [Role.COORDINATOR, Role.EXTERNAL_JUROR],
+      scope: { assignmentIds: ['other'] },
+    };
+    expect(canViewAssignment(scoped, a)).toBe(false);
+  });
 });

@@ -1,4 +1,8 @@
-import { AssignmentStatus, AssignmentType } from '@thesis/shared';
+import {
+  ACTIVE_ASSIGNMENT_STATUSES,
+  AssignmentStatus,
+  AssignmentType,
+} from '@thesis/shared';
 import type { Types } from 'mongoose';
 import {
   businessDaysRemaining,
@@ -88,7 +92,9 @@ export function toAssignmentView(
     evaluationDeadline: a.evaluationDeadline,
     replacedById: a.replacedById?.toHexString(),
     hasExternalLink:
-      !!a.externalTokenExpiresAt && a.externalTokenExpiresAt > now,
+      ACTIVE_ASSIGNMENT_STATUSES.includes(a.status) &&
+      !!a.externalTokenExpiresAt &&
+      a.externalTokenExpiresAt > now,
     externalLinkExpiresAt: a.externalTokenExpiresAt,
     daysSinceAssigned: calendarDaysBetween(a.assignedAt, now),
     responseDaysRemaining: pending

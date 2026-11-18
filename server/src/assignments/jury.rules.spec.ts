@@ -143,4 +143,24 @@ describe('validateJury (RF-C13, RN-01, RF-C14)', () => {
       }),
     ).toEqual([]);
   });
+
+  it('flags a new candidate that duplicates a kept juror', () => {
+    const kept = { ...internal(1, 'j1'), keep: true };
+    expect(check([kept, internal(2, 'j1')])).toContainEqual({
+      code: V.JUROR_DUPLICATE,
+      slot: 2,
+    });
+  });
+
+  it('a missing user does not satisfy RF-C13', () => {
+    const missing: JurorCandidate = { slot: 2, key: 'gone', userId: 'gone' };
+    expect(check([internal(1, 'e', false), missing])).toEqual([
+      { code: V.JUROR_NOT_FOUND, slot: 2 },
+      { code: V.JUROR_UNICORDOBA_REQUIRED },
+    ]);
+  });
+
+  it('reports only JUROR_COUNT for an incomplete jury', () => {
+    expect(check([internal(1, 'e', false)])).toEqual([{ code: V.JUROR_COUNT }]);
+  });
 });
