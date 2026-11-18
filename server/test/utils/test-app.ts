@@ -1,7 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import { getConnectionToken } from '@nestjs/mongoose';
 import { Test } from '@nestjs/testing';
-import { JUROR_ROLES, PeriodTerm, ProgramLevel } from '@thesis/shared';
+import { JUROR_ROLES, PeriodTerm, ProgramLevel, Role } from '@thesis/shared';
 import type { Connection } from 'mongoose';
 import { randomUUID } from 'node:crypto';
 import request from 'supertest';
@@ -9,6 +9,8 @@ import type { App } from 'supertest/types';
 import { AppModule } from '../../src/app.module';
 import { configureApp } from '../../src/app.setup';
 import { CatalogsService } from '../../src/catalogs/catalogs.service';
+import { ThesisDocument } from '../../src/theses/schemas/thesis.schema';
+import { ThesesService } from '../../src/theses/theses.service';
 import { CreateUserDto } from '../../src/users/dto/create-user.dto';
 import { UserDocument } from '../../src/users/schemas/user.schema';
 import { UsersService } from '../../src/users/users.service';
@@ -104,6 +106,29 @@ export async function createCatalog(
     periodId: period.id as string,
     cohortId: cohort.id as string,
   };
+}
+
+/** Registers a thesis through the service with fresh student/advisor unless given. */
+export async function createThesis(
+  app: INestApplication,
+  catalog: CatalogFixture,
+  data: { studentId?: string; advisorId?: string; title?: string } = {},
+): Promise<ThesisDocument> {
+  const studentId =
+    data.studentId ??
+    ((await createUser(app, { roles: [Role.STUDENT] })).id as string);
+  const advisorId =
+    data.advisorId ??
+    ((await createUser(app, { roles: [Role.INTERNAL_JUROR] })).id as string);
+  return app.get(ThesesService).create(
+    {
+      title: data.title ?? 'Tesis de prueba',
+      studentId,
+      advisorId,
+      ...catalog,
+    },
+    { role: Role.COORDINATOR },
+  );
 }
 
 /** Minimal buffers that pass magic-byte detection. */

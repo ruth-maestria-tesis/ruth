@@ -1,0 +1,256 @@
+import { HttpStatus, Injectable } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import {
+  ErrorCode,
+  JUROR_ROLES,
+  Role,
+  TERMINAL_THESIS_STATUSES,
+  THESIS_PROGRESS,
+  ThesisStatus,
+} from '@thesis/shared';
+import { FilterQuery, isValidObjectId, Model, Types } from 'mongoose';
+import { CatalogsService } from '../catalogs/catalogs.service';
+import { AppException } from '../common/errors/app.exception';
+import { paginate, SortFields } from '../common/pagination/paginate';
+import { Paginated } from '../common/pagination/pagination.dto';
+import type { Actor } from '../common/types/actor';
+import type { AuthUser } from '../common/types/auth-user';
+import { escapeRegex } from '../common/utils/escape-regex';
+import { UserDocument } from '../users/schemas/user.schema';
+import { UsersService } from '../users/users.service';
+import { isTerminal } from '../workflow/workflow.rules';
+import { CreateThesisDto } from './dto/create-thesis.dto';
+import { QueryThesesDto } from './dto/query-theses.dto';
+import { UpdateThesisDto } from './dto/update-thesis.dto';
+import { Thesis, ThesisDocument } from './schemas/thesis.schema';
+import { canReadThesis } from './thesis-access.policy';
+import { ThesisCodeService } from './thesis-code';
+
+const SORT_FIELDS: SortFields = {
+  code: 'code',
+  title: 'title',
+  student: 'studentName',
+  status: 'status',
+  progress: 'progress',
+  createdAt: 'createdAt',
+};
+
+const PARTICIPANT_FIELDS = [
+  'advisorId',
+  'coAdvisorIds',
+  'conflictOfInterestUserIds',
+] as const;
+
+type Participants = Pick<
+  CreateThesisDto,
+  'studentId' | 'advisorId' | 'coAdvisorIds' | 'conflictOfInterestUserIds'
+>;
+
+const invalidRef = (field: string) =>
+  new AppException(
+    ErrorCode.THESIS_INVALID_REFERENCE,
+    HttpStatus.BAD_REQUEST,
+    `Invalid ${field}`,
+    { field },
+  );
+
+const thesisNotFound = () =>
+  new AppException(
+    ErrorCode.THESIS_NOT_FOUND,
+    HttpStatus.NOT_FOUND,
+    'Thesis not found',
+  );
+
+const isFaculty = (u?: UserDocument) =>
+  !!u && u.isActive && u.roles.some((r) => JUROR_ROLES.includes(r));
+
+@Injectable()
+export class ThesesService {
+  constructor(
+    @InjectModel(Thesis.name) private readonly model: Model<Thesis>,
+    private readonly catalogs: CatalogsService,
+    private readonly users: UsersService,
+    private readonly codes: ThesisCodeService,
+  ) {}
+
+  /** RF-C01 radicación. `seedTag` is only set by the seed command (stage 8). */
+  async create(
+    dto: CreateThesisDto,
+    actor: Actor,
+    opts: { seedTag?: string } = {},
+  ): Promise<ThesisDocument> {
+    const [program, period, cohort] = await Promise.all([
+      this.catalogs.findProgram(dto.programId),
+      this.catalogs.findPeriod(dto.periodId),
+      this.catalogs.findCohort(dto.cohortId),
+    ]);
+    if (!program?.isActive) throw invalidRef('programId');
+    if (!period) throw invalidRef('periodId');
+    if (!cohort) throw invalidRef('cohortId');
+    if (!cohort.programId.equals(program._id)) {
+      throw new AppException(
+        ErrorCode.COHORT_PROGRAM_MISMATCH,
+        HttpStatus.BAD_REQUEST,
+        'Cohort belongs to another program',
+      );
+    }
+
+    const student = await this.assertParticipants(dto);
+    // Check-then-insert: two simultaneous registrations for one student could both pass (accepted).
+    if (
+      await this.model.exists({
+        studentId: dto.studentId,
+        status: { $nin: TERMINAL_THESIS_STATUSES },
+      })
+    ) {
+      throw new AppException(
+        ErrorCode.THESIS_STUDENT_HAS_ACTIVE,
+        HttpStatus.CONFLICT,
+        'Student already has an active thesis',
+      );
+    }
+
+    const code = await this.codes.next(program.code, period.code, opts.seedTag);
+    return this.model.create({
+      ...dto,
+      code,
+      studentName: `${student.firstName} ${student.lastName}`,
+      status: ThesisStatus.SUBMITTED,
+      progress: THESIS_PROGRESS[ThesisStatus.SUBMITTED],
+      history: [
+        {
+          from: null,
+          to: ThesisStatus.SUBMITTED,
+          at: new Date(),
+          actorId: actor.id ? new Types.ObjectId(actor.id) : undefined,
+          actorRole: actor.role,
+        },
+      ],
+      seedTag: opts.seedTag,
+    });
+  }
+
+  list(query: QueryThesesDto): Promise<Paginated<ThesisDocument>> {
+    const filter: FilterQuery<Thesis> = {};
+    if (query.programId) filter.programId = query.programId;
+    if (query.periodId) filter.periodId = query.periodId;
+    if (query.cohortId) filter.cohortId = query.cohortId;
+    if (query.status) filter.status = query.status;
+    if (query.seedTag) filter.seedTag = query.seedTag;
+    if (query.codePrefix)
+      filter.code = new RegExp(`^${escapeRegex(query.codePrefix)}`, 'i');
+    if (query.q) {
+      const rx = new RegExp(escapeRegex(query.q), 'i');
+      filter.$or = [{ code: rx }, { title: rx }, { studentName: rx }];
+    }
+    return paginate(this.model, filter, query, {
+      sortFields: SORT_FIELDS,
+      defaultSort: 'createdAt',
+      projection: { history: 0 },
+    });
+  }
+
+  findMine(studentId: string): Promise<ThesisDocument[]> {
+    return this.model.find({ studentId }).sort({ createdAt: -1 }).exec();
+  }
+
+  async findById(id: string): Promise<ThesisDocument> {
+    const thesis = isValidObjectId(id)
+      ? await this.model.findById(id).exec()
+      : null;
+    if (!thesis) throw thesisNotFound();
+    return thesis;
+  }
+
+  /** 404 (not 403) for theses the user may not read, so ids cannot be probed. */
+  async findReadable(id: string, user: AuthUser): Promise<ThesisDocument> {
+    const thesis = await this.findById(id);
+    if (!canReadThesis(user, thesis)) throw thesisNotFound();
+    return thesis;
+  }
+
+  async update(id: string, dto: UpdateThesisDto): Promise<ThesisDocument> {
+    const thesis = await this.findById(id);
+    if (isTerminal(thesis.status)) {
+      throw new AppException(
+        ErrorCode.THESIS_CLOSED,
+        HttpStatus.CONFLICT,
+        'Thesis is closed',
+      );
+    }
+    const touchesParticipants = PARTICIPANT_FIELDS.some(
+      (f) => dto[f] !== undefined,
+    );
+    if (touchesParticipants) {
+      // RN-01 is checked against these at juror assignment (stage 3).
+      if (thesis.status !== ThesisStatus.SUBMITTED) {
+        throw new AppException(
+          ErrorCode.THESIS_NOT_EDITABLE,
+          HttpStatus.CONFLICT,
+          'Advisors and conflicts can only change before juror assignment',
+        );
+      }
+      await this.assertParticipants({
+        studentId: thesis.studentId.toHexString(),
+        advisorId: dto.advisorId ?? thesis.advisorId.toHexString(),
+        coAdvisorIds:
+          dto.coAdvisorIds ?? thesis.coAdvisorIds.map((x) => x.toHexString()),
+        conflictOfInterestUserIds:
+          dto.conflictOfInterestUserIds ??
+          thesis.conflictOfInterestUserIds.map((x) => x.toHexString()),
+      });
+    }
+    const updated = await this.model
+      .findOneAndUpdate(
+        { _id: thesis._id, status: thesis.status },
+        { $set: dto },
+        { new: true, runValidators: true },
+      )
+      .exec();
+    if (!updated) {
+      throw new AppException(
+        ErrorCode.WORKFLOW_STATUS_CONFLICT,
+        HttpStatus.CONFLICT,
+        'Thesis status changed concurrently',
+      );
+    }
+    return updated;
+  }
+
+  /** Validates every referenced user in one query; returns the student. */
+  private async assertParticipants(input: Participants): Promise<UserDocument> {
+    // @IsMongoId accepts uppercase hex; compare ids in one canonical form.
+    const lower = (ids?: string[]) => ids?.map((x) => x.toLowerCase());
+    const p = {
+      studentId: input.studentId.toLowerCase(),
+      advisorId: input.advisorId.toLowerCase(),
+      coAdvisorIds: lower(input.coAdvisorIds),
+      conflictOfInterestUserIds: lower(input.conflictOfInterestUserIds),
+    };
+    const coAdvisorIds = p.coAdvisorIds ?? [];
+    const conflictIds = p.conflictOfInterestUserIds ?? [];
+    const ids = [
+      ...new Set([p.studentId, p.advisorId, ...coAdvisorIds, ...conflictIds]),
+    ];
+    const byId = new Map(
+      (await this.users.findManyByIds(ids)).map((u) => [u.id as string, u]),
+    );
+
+    const student = byId.get(p.studentId);
+    if (!student?.isActive || !student.roles.includes(Role.STUDENT))
+      throw invalidRef('studentId');
+    if (p.advisorId === p.studentId || !isFaculty(byId.get(p.advisorId)))
+      throw invalidRef('advisorId');
+    if (
+      coAdvisorIds.some(
+        (id) =>
+          id === p.advisorId || id === p.studentId || !isFaculty(byId.get(id)),
+      )
+    ) {
+      throw invalidRef('coAdvisorIds');
+    }
+    if (conflictIds.some((id) => !byId.has(id)))
+      throw invalidRef('conflictOfInterestUserIds');
+    return student;
+  }
+}
