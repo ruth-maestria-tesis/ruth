@@ -28,4 +28,11 @@ describe('accentInsensitiveRegex', () => {
   it('accepts decomposed (NFD) accents', () => {
     expect(accentInsensitiveRegex('pérez').test('perez')).toBe(true);
   });
+
+  it('matches characters that map to a class not containing them (ã, õ, å)', () => {
+    expect(accentInsensitiveRegex('São').test('São')).toBe(true);
+    expect(accentInsensitiveRegex('João').test('João')).toBe(true);
+    expect(accentInsensitiveRegex('Åke').test('Åke')).toBe(true);
+    expect(accentInsensitiveRegex('perez').test('Pérez')).toBe(true);
+  });
 });

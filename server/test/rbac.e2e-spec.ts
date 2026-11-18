@@ -25,18 +25,19 @@ const ALL: Role[] = [
   Role.INTERNAL_JUROR,
   Role.STUDENT,
 ];
+const WITH_EXTERNAL: Role[] = [...ALL, Role.EXTERNAL_JUROR];
 const MANAGERS: Role[] = [Role.ADMIN, Role.COORDINATOR];
 const ID = '65a1b2c3d4e5f60718293a4b';
 
 /** RBAC matrix (mapa-navegacion-rbac.md §3) for stage-2 endpoints. */
 const matrix = (thesisId: string): Row[] => [
-  { method: 'get', path: '/api/programs', allowed: ALL },
+  { method: 'get', path: '/api/programs', allowed: WITH_EXTERNAL },
   { method: 'post', path: '/api/programs', allowed: MANAGERS },
   { method: 'patch', path: `/api/programs/${ID}`, allowed: MANAGERS },
-  { method: 'get', path: '/api/periods', allowed: ALL },
+  { method: 'get', path: '/api/periods', allowed: WITH_EXTERNAL },
   { method: 'post', path: '/api/periods', allowed: MANAGERS },
   { method: 'patch', path: `/api/periods/${ID}`, allowed: MANAGERS },
-  { method: 'get', path: '/api/cohorts', allowed: ALL },
+  { method: 'get', path: '/api/cohorts', allowed: WITH_EXTERNAL },
   { method: 'post', path: '/api/cohorts', allowed: MANAGERS },
   { method: 'patch', path: `/api/cohorts/${ID}`, allowed: MANAGERS },
   { method: 'get', path: '/api/theses', allowed: MANAGERS },
@@ -71,7 +72,7 @@ describe('RBAC matrix — stage 2 (e2e)', () => {
 
   beforeAll(async () => {
     app = await createTestApp();
-    for (const role of ALL) {
+    for (const role of WITH_EXTERNAL) {
       const u = await createUser(app, { roles: [role] });
       agents.set(role, await loginAgent(app, u.email));
     }
@@ -90,11 +91,18 @@ describe('RBAC matrix — stage 2 (e2e)', () => {
     }
   });
 
-  it.each(ALL)(
+  it.each(WITH_EXTERNAL)(
     '%s gets 403 exactly on the endpoints it is not allowed to use',
     async (role) => {
       for (const row of rows) {
         const res = await agents.get(role)![row.method](row.path).send({});
+        expect({
+          row: `${row.method} ${row.path}`,
+          ok: res.status < 500,
+        }).toEqual({
+          row: `${row.method} ${row.path}`,
+          ok: true,
+        });
         const got =
           res.status === 403
             ? 'forbidden'

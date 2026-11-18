@@ -155,11 +155,17 @@ export class ThesesService {
       const rx = accentInsensitiveRegex(query.q);
       filter.$or = [{ code: rx }, { title: rx }, { studentName: rx }];
     }
+    // The es collation only matters for text sorts; applying it otherwise would stop
+    // status/seedTag/code-prefix filters from using their (simple-collation) indexes.
+    const collated =
+      query.sort === 'title' ||
+      query.sort === 'student' ||
+      query.sort === 'code';
     return paginate(this.model, filter, query, {
       sortFields: SORT_FIELDS,
       defaultSort: 'createdAt',
       projection: { history: 0 },
-      collation: { locale: 'es', strength: 1 },
+      ...(collated && { collation: { locale: 'es', strength: 1 } }),
     });
   }
 
@@ -289,32 +295,43 @@ export class ThesesService {
       ['pdf'],
     );
     const fileId = new Types.ObjectId(stored.id);
-    // Optimistic on manuscriptSeq: a concurrent upload makes this miss instead of duplicating a version.
-    const updated = await this.model
-      .findOneAndUpdate(
-        { _id: thesis._id, manuscriptSeq: thesis.manuscriptSeq },
-        {
-          $inc: { manuscriptSeq: 1 },
-          $push: {
-            manuscripts: {
-              fileId,
-              version: thesis.manuscriptSeq + 1,
-              fileName: stored.fileName,
-              uploadedAt: new Date(),
-              uploadedBy: new Types.ObjectId(user.id),
-            },
+    // Optimistic on manuscriptSeq (a concurrent upload makes this miss instead of duplicating a
+    // version) and guarded against the thesis having been closed since it was read.
+    let updated: ThesisDocument | null;
+    try {
+      updated = await this.model
+        .findOneAndUpdate(
+          {
+            _id: thesis._id,
+            manuscriptSeq: thesis.manuscriptSeq,
+            status: { $nin: TERMINAL_THESIS_STATUSES },
           },
-          $set: { currentManuscriptId: fileId },
-        },
-        { new: true, runValidators: true },
-      )
-      .exec();
+          {
+            $inc: { manuscriptSeq: 1 },
+            $push: {
+              manuscripts: {
+                fileId,
+                version: thesis.manuscriptSeq + 1,
+                fileName: stored.fileName,
+                uploadedAt: new Date(),
+                uploadedBy: new Types.ObjectId(user.id),
+              },
+            },
+            $set: { currentManuscriptId: fileId },
+          },
+          { new: true, runValidators: true },
+        )
+        .exec();
+    } catch (err) {
+      await this.files.delete(stored.id).catch(() => undefined);
+      throw err;
+    }
     if (!updated) {
       await this.files.delete(stored.id);
       throw new AppException(
-        ErrorCode.CONFLICT,
+        ErrorCode.MANUSCRIPT_CONFLICT,
         HttpStatus.CONFLICT,
-        'Another manuscript was uploaded concurrently',
+        'The thesis changed while uploading; retry the upload',
       );
     }
     return updated;

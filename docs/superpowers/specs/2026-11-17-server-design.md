@@ -171,7 +171,8 @@ Todas las colecciones tienen `createdAt` y `updatedAt` (timestamps de Mongoose).
   - `code` (único, p. ej. `MIETIA-2026-II-001`; con datos de prueba `TEST-MIETIA-2026-II-001`), `title`, `abstract`, `keywords[]`.
   - `studentId`, `advisorId`, `coAdvisorIds[]`, `programId`, `cohortId`, `periodId`.
   - `status`, `progress`.
-  - `manuscripts[]: { fileId, version, uploadedAt, uploadedBy }`, `currentManuscriptId`.
+  - `manuscripts[]: { fileId, version, fileName, uploadedAt, uploadedBy }`, `currentManuscriptId`, `manuscriptSeq` (último número de versión; control optimista de subidas concurrentes, `409 MANUSCRIPT_CONFLICT`).
+  - Índice de texto sobre `title`/`code` reservado; `q` usa regex insensible a mayúsculas y acentos.
   - `conflictOfInterestUserIds[]` (conflictos documentados adicionales, RN-01).
   - `history[]: { from, to, at, actorId, actorRole, reason?, evidenceFileIds[] }`.
   - `seedTag?`.

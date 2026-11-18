@@ -20,7 +20,10 @@ export function accentInsensitiveRegex(input: string): RegExp {
   const pattern = Array.from(escaped)
     .map((ch) => {
       const base = ch.normalize('NFD').charAt(0).toLowerCase();
-      return CLASSES[base] ?? ch;
+      const cls = CLASSES[base];
+      if (!cls) return ch;
+      // ã, õ, å... map to a class that lacks them: add the character itself.
+      return cls.includes(ch) ? cls : `${cls.slice(0, -1)}${ch}]`;
     })
     .join('');
   return new RegExp(pattern, 'i');

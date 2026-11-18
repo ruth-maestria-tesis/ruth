@@ -1,5 +1,7 @@
 import { INestApplication } from '@nestjs/common';
+import { getConnectionToken } from '@nestjs/mongoose';
 import { Role, ThesisStatus } from '@thesis/shared';
+import type { Connection } from 'mongoose';
 import { MAX_FILE_BYTES } from '../src/files/file-type';
 import { ThesisDocument } from '../src/theses/schemas/thesis.schema';
 import {
@@ -23,10 +25,11 @@ describe('Manuscripts (e2e)', () => {
   let stranger: TestAgent;
   let juror: TestAgent;
   let thesis: ThesisDocument;
+  let catalog: Awaited<ReturnType<typeof createCatalog>>;
 
   beforeAll(async () => {
     app = await createTestApp();
-    const catalog = await createCatalog(app);
+    catalog = await createCatalog(app);
     const c = await createUser(app, { roles: [Role.COORDINATOR] });
     const a = await createUser(app, { roles: [Role.ADMIN] });
     const s = await createUser(app, { roles: [Role.STUDENT] });
@@ -150,6 +153,45 @@ describe('Manuscripts (e2e)', () => {
       .get(`${url()}/65a1b2c3d4e5f60718293a4b`)
       .expect(404);
     expect(res.body.code).toBe('FILE_NOT_FOUND');
+  });
+
+  it('concurrent uploads never duplicate a version nor leave orphan files', async () => {
+    const fresh = await createThesis(app, catalog);
+    const freshUrl = `/api/theses/${fresh.id as string}/manuscripts`;
+    const files = app
+      .get<Connection>(getConnectionToken())
+      .db!.collection('files.files');
+    const before = await files.countDocuments();
+    const results = await Promise.allSettled(
+      [1, 2].map((n) =>
+        coordinator
+          .post(freshUrl)
+          .attach('file', PDF_BYTES, pdf(`race ${n}.pdf`))
+          .then((r) => r),
+      ),
+    );
+    const responses = results.map((r) => {
+      if (r.status !== 'fulfilled') throw r.reason;
+      return r.value;
+    });
+    const ok = responses.filter((r) => r.status === 201);
+    const conflicts = responses.filter((r) => r.status === 409);
+    expect(ok.length + conflicts.length).toBe(2);
+    expect(ok.length).toBeGreaterThanOrEqual(1);
+    for (const c of conflicts) expect(c.body.code).toBe('MANUSCRIPT_CONFLICT');
+
+    const stored = (
+      await coordinator.get(`/api/theses/${fresh.id as string}`).expect(200)
+    ).body as {
+      manuscripts: { version: number }[];
+      manuscriptSeq: number;
+    };
+    // Holds both when the requests overlap (1 ok + 1 conflict) and when they serialise (2 ok).
+    expect(stored.manuscripts.length).toBe(ok.length);
+    expect(stored.manuscriptSeq).toBe(ok.length);
+    const versions = stored.manuscripts.map((m) => m.version);
+    expect(new Set(versions).size).toBe(versions.length);
+    expect(await files.countDocuments()).toBe(before + ok.length);
   });
 
   it('closed theses do not accept new manuscripts', async () => {
