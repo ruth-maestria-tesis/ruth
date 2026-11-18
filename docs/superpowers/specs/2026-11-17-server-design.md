@@ -89,7 +89,7 @@ Prefijo global de la API: `/api`. Documentación con Swagger en `/api/docs`.
 | Módulo | Responsabilidad | CU / Req. |
 |---|---|---|
 | `auth` | login, refresh, logout, me, token de jurado externo | RF-J14 |
-| `users` | CRUD de usuarios (ADMIN) y búsqueda de docentes para el autocompletado (`GET /users/faculty?q=`). Perfil de jurado: `affiliation`, `isUnicordoba`, `highestDegree`, `country`, `institution` | RF-C14 |
+| `users` | CRUD de usuarios (ADMIN) y búsqueda de docentes para el autocompletado (`GET /users/faculty?q=`). Perfil de jurado: `institution`, `isUnicordoba`, `highestDegree`, `country`, `expertise` | RF-C14 |
 | `catalogs` | `Program`, `Period` (`2026-II`), `Cohort` (corte, número y periodo de ingreso) | Sugerencia 4 |
 | `theses` | radicación, código, listado paginado con orden y filtros, detalle, manuscrito y versiones | RF-C01, sug. 5–6 |
 | `workflow` | máquina de estados, `history[]`, cálculo de avance % | RF-P02/P03 |
@@ -202,7 +202,7 @@ Todas las colecciones tienen `createdAt` y `updatedAt` (timestamps de Mongoose).
 - **notifications**: `userId`, `type`, `title`, `body`, `link?`, `entityRef?: { kind, id }`, `readAt?`.
 - **auditLogs**: `actorId?`, `actorRole?`, `action`, `entity: { kind, id }`, `before?`, `after?`, `ip`, `userAgent`, `at`. No tiene endpoints de update ni delete, y el esquema bloquea `updateOne` y `deleteOne`.
 - **refreshTokens**: `userId`, `tokenHash`, `familyId`, `expiresAt`, `revokedAt?`, `replacedBy?`.
-- **settings** (un solo documento): `acceptanceBusinessDays` (8), `evaluationBusinessDays` (20), `unseenConceptAlertDays` (3), `holidays: Date[]`, `thesisCodePrefix` (`MIETIA`).
+- **settings** (un solo documento): `acceptanceBusinessDays` (8), `evaluationBusinessDays` (20), `unseenConceptAlertDays` (3), `holidays: Date[]`, `thesisCodePrefix` (`MIETIA`) (el código de tesis usa `program.code` como prefijo; este valor queda como respaldo).
 - **GridFS bucket `files`**: el `metadata` guarda `ownerId`, `thesisId?`, `kind` (`MANUSCRIPT` | `CORRECTION` | `FEEDBACK_EVIDENCE` | `MINUTES_PDF`), `mimeType`, `sha256`.
 
 Índices:
@@ -257,7 +257,7 @@ Todas las rutas van bajo `/api`. Los listados usan paginación con `?page=&limit
 
 - `auth`: `POST login | refresh | logout | external/validate-token`, `GET me`, `PATCH password`
 - `users`: `GET / | /:id | /faculty?q=`, `POST /`, `PATCH /:id`, `PATCH /:id/status`
-- `catalogs`: `GET|POST|PATCH /programs | /periods | /cohorts`
+- `catalogs`: `GET|POST|PATCH /programs | /periods | /cohorts` (rutas de primer nivel; lectura para cualquier usuario autenticado)
 - `theses`:
   - `GET /` con filtros `programId, periodId, cohortId, status, q, codePrefix, seedTag` y sort por `code | title | student | status | progress | createdAt`
   - `POST /`, `GET /:id`, `PATCH /:id`

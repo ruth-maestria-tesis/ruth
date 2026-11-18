@@ -33,3 +33,13 @@ Swagger: `http://localhost:3001/api/docs`, disponible solo cuando `NODE_ENV=deve
 - El cliente debe enviar las llamadas a `refresh` de una en una ("single-flight"): si dos peticiones usan a la vez el mismo refresh token, la segunda cuenta como reutilización de un token ya rotado y se revoca toda la sesión.
 - Al desactivar un usuario o cambiar sus roles, sus refresh tokens se revocan de inmediato, pero el access token ya emitido sigue siendo válido hasta 15 minutos (`JWT_ACCESS_TTL_SECONDS`, 900 por defecto; no se consulta la base de datos en cada petición).
 - Errores: `{ statusCode, code, message, details? }`; los códigos están en `@thesis/shared` (`ErrorCode`).
+
+## Catálogos, tesis y archivos (sub-etapa 2)
+- `GET|POST|PATCH /api/programs`, `/api/periods`, `/api/cohorts` (lectura para cualquier usuario autenticado; escritura ADMIN y COORDINATOR).
+- `GET /api/theses` con filtros `programId, periodId, cohortId, status, q, codePrefix, seedTag`, paginación `page, limit` y orden `sort=code|title|student|status|progress|createdAt&order=asc|desc`.
+  - La búsqueda `q` es insensible a tildes y mayúsculas (por ejemplo, `garcia` encuentra "García").
+  - El orden usa las reglas del español (collation), de modo que "Ángel" se ordena junto a "Angel" y la "ñ" va después de la "n".
+- `POST /api/theses` (COORDINATOR) y el formato de código `MIETIA-2026-II-001` (`PROGRAMCODE-PERIODCODE-NNN`, con `seedTag` opcional como prefijo).
+- `GET /api/theses/mine` (STUDENT), `GET /api/theses/:id`, `PATCH /api/theses/:id`.
+- `POST /api/theses/:id/manuscripts` (multipart, campo `file`, solo PDF, máx. 25 MB; lo pueden subir COORDINATOR y el STUDENT dueño de la tesis) y `GET /api/theses/:id/manuscripts/:fileId` (ADMIN, COORDINATOR y STUDENT dueño). El nombre de archivo admite caracteres no ASCII (tildes, ñ).
+- Nota: los cambios de estado solo ocurren mediante `WorkflowService` (sub-etapas siguientes); se emite el evento `thesis.status.changed`.
