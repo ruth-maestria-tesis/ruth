@@ -1,4 +1,4 @@
-import { Role } from '@thesis/shared';
+import { AssignmentStatus, Role } from '@thesis/shared';
 import type { Types } from 'mongoose';
 import type { AuthUser } from '../common/types/auth-user';
 
@@ -25,4 +25,14 @@ export function canWriteThesis(
 ): boolean {
   if (user.roles.includes(Role.COORDINATOR)) return true;
   return user.roles.includes(Role.STUDENT) && thesis.studentId.equals(user.id);
+}
+
+export type JurorAccess = 'NONE' | 'METADATA' | 'MANUSCRIPT';
+
+/** RBAC: a juror sees the thesis once assigned and the manuscript only after accepting. */
+export function jurorAccessLevel(
+  statuses: readonly AssignmentStatus[],
+): JurorAccess {
+  if (statuses.includes(AssignmentStatus.ACCEPTED)) return 'MANUSCRIPT';
+  return statuses.includes(AssignmentStatus.PENDING) ? 'METADATA' : 'NONE';
 }

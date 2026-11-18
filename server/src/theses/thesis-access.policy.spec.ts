@@ -1,6 +1,10 @@
-import { Role } from '@thesis/shared';
+import { AssignmentStatus, Role } from '@thesis/shared';
 import { Types } from 'mongoose';
-import { canReadThesis, canWriteThesis } from './thesis-access.policy';
+import {
+  canReadThesis,
+  canWriteThesis,
+  jurorAccessLevel,
+} from './thesis-access.policy';
 
 describe('canReadThesis', () => {
   const studentId = new Types.ObjectId();
@@ -57,5 +61,18 @@ describe('canWriteThesis', () => {
     expect(canWriteThesis(user([Role.ADMIN, Role.STUDENT]), thesis)).toBe(
       false,
     );
+  });
+});
+
+describe('jurorAccessLevel', () => {
+  it('pending gives metadata, accepted gives the manuscript, others nothing', () => {
+    expect(jurorAccessLevel([])).toBe('NONE');
+    expect(
+      jurorAccessLevel([AssignmentStatus.DECLINED, AssignmentStatus.REPLACED]),
+    ).toBe('NONE');
+    expect(jurorAccessLevel([AssignmentStatus.PENDING])).toBe('METADATA');
+    expect(
+      jurorAccessLevel([AssignmentStatus.PENDING, AssignmentStatus.ACCEPTED]),
+    ).toBe('MANUSCRIPT');
   });
 });
