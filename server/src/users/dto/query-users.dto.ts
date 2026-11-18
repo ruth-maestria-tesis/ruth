@@ -1,5 +1,11 @@
 import { Transform } from 'class-transformer';
-import { IsBoolean, IsEnum, IsOptional, IsString } from 'class-validator';
+import {
+  IsBoolean,
+  IsEnum,
+  IsOptional,
+  IsString,
+  MaxLength,
+} from 'class-validator';
 import { Role } from '@thesis/shared';
 import { PaginationQueryDto } from '../../common/pagination/pagination.dto';
 
@@ -10,6 +16,7 @@ export class QueryUsersDto extends PaginationQueryDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(100)
   q?: string;
 
   @IsOptional()
@@ -23,5 +30,6 @@ export class QueryUsersDto extends PaginationQueryDto {
 export class FacultyQueryDto {
   @IsOptional()
   @IsString()
+  @MaxLength(100)
   q?: string;
 }

@@ -59,7 +59,8 @@ export class CreateUserDto {
   @IsOptional()
   @IsString()
   @MinLength(8)
-  // bcrypt only uses the first 72 bytes of the input.
+  // bcrypt only uses the first 72 bytes of the input. MaxLength counts characters,
+  // not bytes, so this is an approximation: multi-byte characters can still exceed 72 bytes.
   @MaxLength(72)
   password?: string;
 

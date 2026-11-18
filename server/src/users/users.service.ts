@@ -1,7 +1,11 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { ErrorCode, JUROR_ROLES, Role } from '@thesis/shared';
-import { FilterQuery, isValidObjectId, Model } from 'mongoose';
+import { FilterQuery, isValidObjectId, Model, Types } from 'mongoose';
+import {
+  RefreshToken,
+  revokeRefreshTokens,
+} from '../auth/schemas/refresh-token.schema';
 import { AppException } from '../common/errors/app.exception';
 import { Paginated } from '../common/pagination/pagination.dto';
 import { hashPassword } from '../common/security/password';
@@ -13,26 +17,23 @@ import { User, UserDocument } from './schemas/user.schema';
 
 const USER_SORT_FIELDS = ['email', 'firstName', 'lastName', 'createdAt'];
 
+/** Fields exposed by the faculty autocomplete (M7); `id` comes from the toJSON virtual. */
+const FACULTY_PROJECTION =
+  'firstName lastName email roles isActive jurorProfile';
+
+const sameRoles = (a: readonly Role[], b: readonly Role[]) =>
+  a.length === b.length && a.every((r) => b.includes(r));
+
 @Injectable()
 export class UsersService {
-  constructor(@InjectModel(User.name) private readonly model: Model<User>) {}
+  constructor(
+    @InjectModel(User.name) private readonly model: Model<User>,
+    @InjectModel(RefreshToken.name)
+    private readonly refreshTokens: Model<RefreshToken>,
+  ) {}
 
   async create(dto: CreateUserDto): Promise<UserDocument> {
-    const isExternalOnly = dto.roles.every((r) => r === Role.EXTERNAL_JUROR);
-    if (!dto.password && !isExternalOnly) {
-      throw new AppException(
-        ErrorCode.USER_PASSWORD_REQUIRED,
-        HttpStatus.BAD_REQUEST,
-        'Password is required',
-      );
-    }
-    if (dto.roles.some((r) => JUROR_ROLES.includes(r)) && !dto.jurorProfile) {
-      throw new AppException(
-        ErrorCode.USER_JUROR_PROFILE_REQUIRED,
-        HttpStatus.BAD_REQUEST,
-        'Juror profile is required',
-      );
-    }
+    this.assertRoleInvariants(dto.roles, !!dto.password, !!dto.jurorProfile);
     if (await this.model.exists({ email: dto.email.toLowerCase() })) {
       throw new AppException(
         ErrorCode.USER_EMAIL_TAKEN,
@@ -117,14 +118,34 @@ export class UsersService {
       ];
     }
     return this.model
-      .find(filter)
+      .find(filter, FACULTY_PROJECTION)
       .sort({ lastName: 1, firstName: 1 })
       .limit(20)
       .exec();
   }
 
-  async update(id: string, dto: UpdateUserDto): Promise<UserDocument> {
-    await this.findById(id);
+  /**
+   * Validates the merged state (stored user + dto) with the same rules as create, and
+   * protects against admin lockout. A role change revokes the user's refresh tokens.
+   */
+  async update(
+    id: string,
+    dto: UpdateUserDto,
+    actorId: string,
+  ): Promise<UserDocument> {
+    const existing = await this.findByIdWithPassword(id);
+    const roles = dto.roles ?? existing.roles;
+    const jurorProfile =
+      dto.jurorProfile !== undefined ? dto.jurorProfile : existing.jurorProfile;
+    this.assertRoleInvariants(roles, !!existing.passwordHash, !!jurorProfile);
+
+    const losesAdmin =
+      existing.roles.includes(Role.ADMIN) && !roles.includes(Role.ADMIN);
+    if (losesAdmin) {
+      this.assertNotSelf(id, actorId);
+      if (existing.isActive) await this.assertNotLastActiveAdmin(id);
+    }
+
     const updated = await this.model.findByIdAndUpdate(id, dto, {
       new: true,
       runValidators: true,
@@ -135,13 +156,27 @@ export class UsersService {
         HttpStatus.NOT_FOUND,
         'User not found',
       );
+    if (!sameRoles(existing.roles, updated.roles))
+      await this.revokeSessions(id);
     return updated;
   }
 
-  async setActive(id: string, isActive: boolean): Promise<UserDocument> {
+  /** Deactivation revokes the user's refresh tokens. */
+  async setActive(
+    id: string,
+    isActive: boolean,
+    actorId: string,
+  ): Promise<UserDocument> {
     const user = await this.findById(id);
+    if (!isActive) {
+      this.assertNotSelf(id, actorId);
+      if (user.isActive && user.roles.includes(Role.ADMIN))
+        await this.assertNotLastActiveAdmin(id);
+    }
     user.isActive = isActive;
-    return user.save();
+    const saved = await user.save();
+    if (!isActive) await this.revokeSessions(id);
+    return saved;
   }
 
   async setPassword(id: string, password: string): Promise<void> {
@@ -149,5 +184,66 @@ export class UsersService {
       { _id: id },
       { passwordHash: await hashPassword(password) },
     );
+  }
+
+  /** Creation invariants, also applied to the merged state on update. */
+  private assertRoleInvariants(
+    roles: readonly Role[],
+    hasPassword: boolean,
+    hasJurorProfile: boolean,
+  ): void {
+    const isExternalOnly = roles.every((r) => r === Role.EXTERNAL_JUROR);
+    if (!hasPassword && !isExternalOnly) {
+      throw new AppException(
+        ErrorCode.USER_PASSWORD_REQUIRED,
+        HttpStatus.BAD_REQUEST,
+        'Password is required',
+      );
+    }
+    if (roles.some((r) => JUROR_ROLES.includes(r)) && !hasJurorProfile) {
+      throw new AppException(
+        ErrorCode.USER_JUROR_PROFILE_REQUIRED,
+        HttpStatus.BAD_REQUEST,
+        'Juror profile is required',
+      );
+    }
+  }
+
+  /** An admin cannot demote or deactivate themselves. */
+  private assertNotSelf(targetId: string, actorId: string): void {
+    if (targetId === actorId) {
+      throw new AppException(
+        ErrorCode.USER_SELF_LOCKOUT,
+        HttpStatus.BAD_REQUEST,
+        'You cannot remove your own admin access',
+      );
+    }
+  }
+
+  private async assertNotLastActiveAdmin(targetId: string): Promise<void> {
+    const others = await this.model.countDocuments({
+      _id: { $ne: targetId },
+      roles: Role.ADMIN,
+      isActive: true,
+    });
+    if (others === 0) {
+      throw new AppException(
+        ErrorCode.USER_LAST_ADMIN,
+        HttpStatus.CONFLICT,
+        'At least one active admin is required',
+      );
+    }
+  }
+
+  /**
+   * Revokes every refresh token of the user so the next refresh fails with 401.
+   * By design an access token that was already issued stays valid until it expires
+   * (JWT_ACCESS_TTL_SECONDS, 15 minutes by default): access tokens are not checked
+   * against the database on each request.
+   */
+  private revokeSessions(userId: string): Promise<void> {
+    return revokeRefreshTokens(this.refreshTokens, {
+      userId: new Types.ObjectId(userId),
+    });
   }
 }

@@ -9,7 +9,9 @@ import {
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Role } from '@thesis/shared';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
+import type { AuthUser } from '../common/types/auth-user';
 import { CreateUserDto } from './dto/create-user.dto';
 import { FacultyQueryDto, QueryUsersDto } from './dto/query-users.dto';
 import { UpdateUserDto, UpdateUserStatusDto } from './dto/update-user.dto';
@@ -47,13 +49,21 @@ export class UsersController {
 
   @Patch(':id')
   @Roles(Role.ADMIN)
-  update(@Param('id') id: string, @Body() dto: UpdateUserDto) {
-    return this.users.update(id, dto);
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateUserDto,
+    @CurrentUser() actor: AuthUser,
+  ) {
+    return this.users.update(id, dto, actor.id);
   }
 
   @Patch(':id/status')
   @Roles(Role.ADMIN)
-  setStatus(@Param('id') id: string, @Body() dto: UpdateUserStatusDto) {
-    return this.users.setActive(id, dto.isActive);
+  setStatus(
+    @Param('id') id: string,
+    @Body() dto: UpdateUserStatusDto,
+    @CurrentUser() actor: AuthUser,
+  ) {
+    return this.users.setActive(id, dto.isActive, actor.id);
   }
 }
