@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   HttpStatus,
+  InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { ErrorCode } from '@thesis/shared';
@@ -48,7 +49,7 @@ describe('toErrorBody', () => {
     expect(body).toMatchObject({
       statusCode: 409,
       code: ErrorCode.DUPLICATE_KEY,
-      details: { email: 'a@b.co' },
+      details: { fields: ['email'] },
     });
   });
 
@@ -58,6 +59,38 @@ describe('toErrorBody', () => {
       statusCode: 500,
       code: ErrorCode.INTERNAL_ERROR,
       message: 'Internal server error',
+    });
+  });
+
+  it('hides messages of 5xx HttpExceptions', () => {
+    const body = toErrorBody(new InternalServerErrorException('secret detail'));
+    expect(body).toEqual({
+      statusCode: 500,
+      code: ErrorCode.INTERNAL_ERROR,
+      message: 'Internal server error',
+    });
+  });
+
+  it('maps body-parser malformed JSON errors to 400 VALIDATION_FAILED', () => {
+    const err = Object.assign(new SyntaxError('Unexpected token } in JSON'), {
+      status: 400,
+    });
+    expect(toErrorBody(err)).toEqual({
+      statusCode: 400,
+      code: ErrorCode.VALIDATION_FAILED,
+      message: 'Malformed request',
+    });
+  });
+
+  it('maps other plain 4xx errors such as 413 to their status', () => {
+    const err = Object.assign(new Error('request entity too large'), {
+      name: 'PayloadTooLargeError',
+      statusCode: 413,
+    });
+    expect(toErrorBody(err)).toEqual({
+      statusCode: 413,
+      code: ErrorCode.HTTP_ERROR,
+      message: 'Request error',
     });
   });
 });

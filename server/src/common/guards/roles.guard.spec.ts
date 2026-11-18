@@ -34,13 +34,14 @@ describe('RolesGuard', () => {
 
   it('rejects a user without the required roles with AUTH_FORBIDDEN', () => {
     jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue([Role.ADMIN]);
+    let error: unknown;
     try {
       guard.canActivate(contextWith({ roles: [Role.STUDENT] }));
-      fail('expected AppException');
     } catch (e) {
-      expect(e).toBeInstanceOf(AppException);
-      expect((e as AppException).code).toBe(ErrorCode.AUTH_FORBIDDEN);
-      expect((e as AppException).getStatus()).toBe(403);
+      error = e;
     }
+    expect(error).toBeInstanceOf(AppException);
+    expect((error as AppException).code).toBe(ErrorCode.AUTH_FORBIDDEN);
+    expect((error as AppException).getStatus()).toBe(403);
   });
 });

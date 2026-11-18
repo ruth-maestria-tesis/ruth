@@ -27,12 +27,26 @@ const STATUS_CODES: Record<number, ErrorCode> = {
 
 function isMongoDuplicateKey(
   e: unknown,
-): e is { code: number; keyValue?: unknown } {
+): e is { code: number; keyValue?: Record<string, unknown> } {
   return (
     typeof e === 'object' &&
     e !== null &&
     (e as { code?: unknown }).code === 11000
   );
+}
+
+/** Body-parser style errors: plain objects carrying a 4xx `status`/`statusCode`. */
+function plainClientErrorStatus(e: unknown): number | undefined {
+  if (typeof e !== 'object' || e === null) return undefined;
+  const { status, statusCode } = e as {
+    status?: unknown;
+    statusCode?: unknown;
+  };
+  for (const v of [status, statusCode]) {
+    if (typeof v === 'number' && Number.isInteger(v) && v >= 400 && v <= 499)
+      return v;
+  }
+  return undefined;
 }
 
 export function toErrorBody(exception: unknown): ErrorBody {
@@ -48,6 +62,13 @@ export function toErrorBody(exception: unknown): ErrorBody {
 
   if (exception instanceof HttpException) {
     const statusCode = exception.getStatus();
+    if (statusCode >= 500) {
+      return {
+        statusCode,
+        code: ErrorCode.INTERNAL_ERROR,
+        message: 'Internal server error',
+      };
+    }
     const response = exception.getResponse();
     const code = STATUS_CODES[statusCode] ?? ErrorCode.HTTP_ERROR;
     if (
@@ -76,7 +97,19 @@ export function toErrorBody(exception: unknown): ErrorBody {
       statusCode: 409,
       code: ErrorCode.DUPLICATE_KEY,
       message: 'Duplicate key',
-      details: exception.keyValue,
+      details: { fields: Object.keys(exception.keyValue ?? {}) },
+    };
+  }
+
+  const clientStatus = plainClientErrorStatus(exception);
+  if (clientStatus !== undefined) {
+    return {
+      statusCode: clientStatus,
+      code:
+        clientStatus === 400
+          ? ErrorCode.VALIDATION_FAILED
+          : (STATUS_CODES[clientStatus] ?? ErrorCode.HTTP_ERROR),
+      message: clientStatus === 400 ? 'Malformed request' : 'Request error',
     };
   }
 
