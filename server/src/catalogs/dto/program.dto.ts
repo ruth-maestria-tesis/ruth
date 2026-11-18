@@ -1,4 +1,3 @@
-import { OmitType, PartialType } from '@nestjs/swagger';
 import { ProgramLevel } from '@thesis/shared';
 import {
   IsBoolean,
@@ -24,9 +23,17 @@ export class CreateProgramDto {
   level!: ProgramLevel;
 }
 
-export class UpdateProgramDto extends PartialType(
-  OmitType(CreateProgramDto, ['code'] as const),
-) {
+export class UpdateProgramDto {
+  @IsOptionalNonNull()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(200)
+  name?: string;
+
+  @IsOptionalNonNull()
+  @IsEnum(ProgramLevel)
+  level?: ProgramLevel;
+
   @IsOptionalNonNull()
   @IsBoolean()
   isActive?: boolean;

@@ -14,6 +14,7 @@ describe('Catalogs (e2e)', () => {
   let app: INestApplication;
   let coordinator: TestAgent;
   let student: TestAgent;
+  let admin: TestAgent;
   let programId: string;
   let periodId: string;
 
@@ -23,11 +24,13 @@ describe('Catalogs (e2e)', () => {
     const s = await createUser(app, { roles: [Role.STUDENT] });
     coordinator = await loginAgent(app, c.email);
     student = await loginAgent(app, s.email);
+    const a = await createUser(app, { roles: [Role.ADMIN] });
+    admin = await loginAgent(app, a.email);
   });
   afterAll(() => closeTestApp(app));
 
   describe('programs', () => {
-    it('coordinator creates a program (code uppercased)', async () => {
+    it('coordinator creates a program', async () => {
       const res = await coordinator
         .post('/api/programs')
         .send({
@@ -44,6 +47,14 @@ describe('Catalogs (e2e)', () => {
       expect(res.body.id).toBeDefined();
       expect(res.body._id).toBeUndefined();
       programId = res.body.id;
+    });
+
+    it('uppercases the code on create', async () => {
+      const res = await coordinator
+        .post('/api/programs')
+        .send({ code: 'mietia2', name: 'Segundo programa', level: 'MASTER' })
+        .expect(201);
+      expect(res.body.code).toBe('MIETIA2');
     });
 
     it('rejects a duplicated code with DUPLICATE_KEY', async () => {
@@ -63,7 +74,10 @@ describe('Catalogs (e2e)', () => {
 
     it('any authenticated user lists programs; anonymous gets 401', async () => {
       const res = await student.get('/api/programs').expect(200);
-      expect(res.body.map((p: { code: string }) => p.code)).toEqual(['MIETIA']);
+      expect(res.body.map((p: { code: string }) => p.code)).toEqual([
+        'MIETIA',
+        'MIETIA2',
+      ]);
       await request(http(app)).get('/api/programs').expect(401);
     });
 
@@ -72,6 +86,14 @@ describe('Catalogs (e2e)', () => {
         .post('/api/programs')
         .send({ code: 'X1', name: 'X', level: 'MASTER' })
         .expect(403);
+    });
+
+    it('an admin can create programs', async () => {
+      const res = await admin
+        .post('/api/programs')
+        .send({ code: 'ADMINP', name: 'Creado por admin', level: 'MASTER' })
+        .expect(201);
+      expect(res.body.code).toBe('ADMINP');
     });
 
     it('coordinator deactivates a program; code is immutable', async () => {
@@ -88,6 +110,13 @@ describe('Catalogs (e2e)', () => {
         .patch(`/api/programs/${programId}`)
         .send({ isActive: true })
         .expect(200);
+    });
+
+    it('rejects a null name on PATCH', async () => {
+      await coordinator
+        .patch(`/api/programs/${programId}`)
+        .send({ name: null })
+        .expect(400);
     });
 
     it('PATCH on an unknown program is 404 PROGRAM_NOT_FOUND; malformed id is 400', async () => {
@@ -129,6 +158,27 @@ describe('Catalogs (e2e)', () => {
         })
         .expect(400);
       expect(res.body.code).toBe('PERIOD_INVALID_RANGE');
+    });
+
+    it('rejects a duplicated period with DUPLICATE_KEY', async () => {
+      const res = await coordinator
+        .post('/api/periods')
+        .send({
+          year: 2026,
+          term: 'II',
+          startsAt: '2026-07-01',
+          endsAt: '2026-12-15',
+        })
+        .expect(409);
+      expect(res.body.code).toBe('DUPLICATE_KEY');
+    });
+
+    it('PATCH on an unknown period is 404 PERIOD_NOT_FOUND', async () => {
+      const res = await coordinator
+        .patch('/api/periods/65a1b2c3d4e5f60718293a4b')
+        .send({ endsAt: '2026-12-20' })
+        .expect(404);
+      expect(res.body.code).toBe('PERIOD_NOT_FOUND');
     });
 
     it('lists periods newest first', async () => {
@@ -176,10 +226,11 @@ describe('Catalogs (e2e)', () => {
     });
 
     it('rejects a duplicated cohort number in the same program', async () => {
-      await coordinator
+      const res = await coordinator
         .post('/api/cohorts')
         .send({ programId, periodId, number: 1, name: 'Corte 1 bis' })
         .expect(409);
+      expect(res.body.code).toBe('DUPLICATE_KEY');
     });
 
     it('rejects unknown program or period references with 400', async () => {
@@ -205,6 +256,37 @@ describe('Catalogs (e2e)', () => {
         .get(`/api/cohorts?programId=${programId}`)
         .expect(200);
       expect(res.body.map((c: { number: number }) => c.number)).toEqual([1, 2]);
+    });
+
+    it('renames a cohort', async () => {
+      const list = await student
+        .get(`/api/cohorts?programId=${programId}`)
+        .expect(200);
+      const cohortId = list.body[0].id;
+      const res = await coordinator
+        .patch(`/api/cohorts/${cohortId}`)
+        .send({ name: 'Corte 1 renombrado' })
+        .expect(200);
+      expect(res.body.name).toBe('Corte 1 renombrado');
+    });
+
+    it('PATCH cohort with an unknown periodId is 400 PERIOD_NOT_FOUND', async () => {
+      const list = await student
+        .get(`/api/cohorts?programId=${programId}`)
+        .expect(200);
+      const res = await coordinator
+        .patch(`/api/cohorts/${list.body[0].id}`)
+        .send({ periodId: '65a1b2c3d4e5f60718293a4b' })
+        .expect(400);
+      expect(res.body.code).toBe('PERIOD_NOT_FOUND');
+    });
+
+    it('PATCH on an unknown cohort is 404 COHORT_NOT_FOUND', async () => {
+      const res = await coordinator
+        .patch('/api/cohorts/65a1b2c3d4e5f60718293a4b')
+        .send({ periodId })
+        .expect(404);
+      expect(res.body.code).toBe('COHORT_NOT_FOUND');
     });
   });
 });

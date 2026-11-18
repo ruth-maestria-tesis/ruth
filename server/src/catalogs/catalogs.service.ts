@@ -78,6 +78,7 @@ export class CatalogsService {
   // ---- periods ----
 
   listPeriods(): Promise<PeriodDocument[]> {
+    // Newest first; relies on 'II' > 'I' in string order.
     return this.periods.find().sort({ year: -1, term: -1 }).exec();
   }
 
@@ -145,6 +146,12 @@ export class CatalogsService {
     id: string,
     dto: UpdateCohortDto,
   ): Promise<CohortDocument> {
+    if (!(await this.cohorts.exists({ _id: id })))
+      throw notFound(
+        ErrorCode.COHORT_NOT_FOUND,
+        HttpStatus.NOT_FOUND,
+        'Cohort',
+      );
     if (dto.periodId) await this.assertReferences(undefined, dto.periodId);
     const updated = await this.cohorts.findByIdAndUpdate(id, dto, {
       new: true,
