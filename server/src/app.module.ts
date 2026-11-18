@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { JwtModule } from '@nestjs/jwt';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
@@ -11,6 +12,7 @@ import { RolesGuard } from './common/guards/roles.guard';
 import { envValidationSchema } from './config/env.validation';
 import { HealthController } from './health.controller';
 import { UsersModule } from './users/users.module';
+import { WorkflowModule } from './workflow/workflow.module';
 
 @Module({
   imports: [
@@ -19,6 +21,7 @@ import { UsersModule } from './users/users.module';
       validationSchema: envValidationSchema,
       ignoreEnvFile: process.env.NODE_ENV === 'test',
     }),
+    EventEmitterModule.forRoot(),
     MongooseModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
@@ -34,6 +37,7 @@ import { UsersModule } from './users/users.module';
     UsersModule,
     AuthModule,
     CatalogsModule,
+    WorkflowModule,
   ],
   controllers: [HealthController],
   providers: [
