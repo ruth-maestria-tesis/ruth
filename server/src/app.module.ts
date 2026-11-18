@@ -10,6 +10,7 @@ import { CatalogsModule } from './catalogs/catalogs.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { envValidationSchema } from './config/env.validation';
+import { FilesModule } from './files/files.module';
 import { HealthController } from './health.controller';
 import { UsersModule } from './users/users.module';
 import { WorkflowModule } from './workflow/workflow.module';
@@ -37,6 +38,7 @@ import { WorkflowModule } from './workflow/workflow.module';
     UsersModule,
     AuthModule,
     CatalogsModule,
+    FilesModule,
     WorkflowModule,
   ],
   controllers: [HealthController],

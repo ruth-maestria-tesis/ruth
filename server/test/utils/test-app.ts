@@ -105,3 +105,21 @@ export async function createCatalog(
     cohortId: cohort.id as string,
   };
 }
+
+/** Minimal buffers that pass magic-byte detection. */
+export const PDF_BYTES = Buffer.from('%PDF-1.4\n% test manuscript\n%%EOF\n');
+export const DOCX_BYTES = Buffer.concat([
+  Buffer.from([0x50, 0x4b, 0x03, 0x04]),
+  Buffer.alloc(26),
+  Buffer.from('word/document.xml'),
+]);
+
+/** supertest parser that collects binary responses into a Buffer. */
+export const binaryParser = (
+  res: NodeJS.ReadableStream,
+  cb: (err: Error | null, body: Buffer) => void,
+) => {
+  const chunks: Buffer[] = [];
+  res.on('data', (c: Buffer) => chunks.push(c));
+  res.on('end', () => cb(null, Buffer.concat(chunks)));
+};
