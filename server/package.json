@@ -19,6 +19,7 @@
     "test:cov": "jest --coverage",
     "pretest:e2e": "pnpm --filter @thesis/shared build",
     "test:e2e": "jest --config ./test/jest-e2e.json --runInBand",
+    "preadmin:create": "pnpm --filter @thesis/shared build",
     "admin:create": "nest start --entryFile cli/create-admin"
   },
   "dependencies": {
