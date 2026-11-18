@@ -96,13 +96,17 @@ export class AuthController {
   }
 
   private cookieOptions(path: string): CookieOptions {
+    const sameSite = this.config.get<'lax' | 'strict' | 'none'>(
+      'COOKIE_SAME_SITE',
+      'lax',
+    );
     return {
       httpOnly: true,
-      secure: this.config.get<string>('NODE_ENV') === 'production',
-      sameSite: this.config.get<'lax' | 'strict' | 'none'>(
-        'COOKIE_SAME_SITE',
-        'lax',
-      ),
+      // Browsers reject SameSite=None cookies that are not Secure.
+      secure:
+        this.config.get<string>('NODE_ENV') === 'production' ||
+        sameSite === 'none',
+      sameSite,
       path,
     };
   }

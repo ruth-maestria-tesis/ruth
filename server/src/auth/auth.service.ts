@@ -7,11 +7,14 @@ import { randomUUID } from 'node:crypto';
 import { Model } from 'mongoose';
 import { AppException } from '../common/errors/app.exception';
 import { sha256 } from '../common/security/hash';
-import { verifyPassword } from '../common/security/password';
+import { verifyPasswordOrDummy } from '../common/security/password';
 import { AccessTokenPayload } from '../common/types/auth-user';
 import { UserDocument } from '../users/schemas/user.schema';
 import { UsersService } from '../users/users.service';
-import { RefreshToken } from './schemas/refresh-token.schema';
+import {
+  RefreshToken,
+  revokeRefreshTokens,
+} from './schemas/refresh-token.schema';
 
 interface RefreshTokenPayload {
   sub: string;
@@ -52,10 +55,10 @@ export class AuthService {
 
   async login(email: string, password: string): Promise<SessionResult> {
     const user = await this.users.findByEmailWithPassword(email);
-    if (
-      !user?.passwordHash ||
-      !(await verifyPassword(password, user.passwordHash))
-    ) {
+    // Always run bcrypt (against a dummy hash when there is none) so timing does not reveal
+    // whether the email exists or belongs to an external juror without password.
+    const valid = await verifyPasswordOrDummy(password, user?.passwordHash);
+    if (!user || !valid) {
       throw new AppException(
         ErrorCode.AUTH_INVALID_CREDENTIALS,
         HttpStatus.UNAUTHORIZED,
@@ -74,20 +77,27 @@ export class AuthService {
 
   async refresh(token: string | undefined): Promise<SessionResult> {
     if (!token) throw refreshInvalid();
+    const refreshSecret = this.config.getOrThrow<string>('JWT_REFRESH_SECRET');
     let payload: RefreshTokenPayload;
     try {
       payload = await this.jwt.verifyAsync<RefreshTokenPayload>(token, {
-        secret: this.config.getOrThrow<string>('JWT_REFRESH_SECRET'),
+        secret: refreshSecret,
+        algorithms: ['HS256'],
       });
     } catch {
       throw refreshInvalid();
     }
 
-    const stored = await this.refreshTokens.findOne({
-      tokenHash: sha256(token),
-    });
-    if (!stored || stored.revokedAt) {
-      // A rotated or unknown token was presented: treat as theft and revoke the whole family.
+    // Claim the token atomically before issuing anything: of two concurrent refreshes with the
+    // same token only one can match `revokedAt: null`. No grace window by design; the client
+    // serializes its refreshes, so a second use is treated as reuse.
+    const tokenHash = sha256(token);
+    const claimed = await this.refreshTokens.findOneAndUpdate(
+      { tokenHash, revokedAt: null },
+      { $set: { revokedAt: new Date() } },
+    );
+    if (!claimed) {
+      // A rotated, revoked or unknown token was presented: treat as theft and revoke the family.
       await this.revokeFamily(payload.fid);
       throw refreshInvalid();
     }
@@ -95,7 +105,7 @@ export class AuthService {
     const user = await this.users.findById(payload.sub).catch(() => null);
     if (!user) throw refreshInvalid();
     if (!user.isActive) {
-      await this.revokeFamily(stored.familyId);
+      await this.revokeFamily(claimed.familyId);
       throw new AppException(
         ErrorCode.AUTH_USER_INACTIVE,
         HttpStatus.FORBIDDEN,
@@ -103,18 +113,44 @@ export class AuthService {
       );
     }
 
-    const tokens = await this.issueTokens(user, stored.familyId);
-    stored.revokedAt = new Date();
-    stored.replacedBy = sha256(tokens.refreshToken);
-    await stored.save();
+    const tokens = await this.issueTokens(user, claimed.familyId);
+    const newHash = sha256(tokens.refreshToken);
+    await this.refreshTokens.updateOne(
+      { tokenHash },
+      { $set: { replacedBy: newHash } },
+    );
+    // If the family was revoked while we were issuing (e.g. a concurrent reuse of the same
+    // token), make sure the token we just created does not outlive that revocation.
+    if (
+      await this.refreshTokens.exists({
+        familyId: claimed.familyId,
+        familyRevokedAt: { $ne: null },
+      })
+    ) {
+      await this.refreshTokens.updateOne(
+        { tokenHash: newHash, revokedAt: null },
+        { $set: { revokedAt: new Date() } },
+      );
+    }
     return { user, ...tokens };
   }
 
-  /** Always succeeds: an expired or malformed cookie must not block logging out. */
+  /** Always succeeds: an expired, malformed or forged cookie must not block logging out. */
   async logout(token: string | undefined): Promise<void> {
     if (!token) return;
-    const payload = this.jwt.decode<RefreshTokenPayload | null>(token);
-    if (payload?.fid) await this.revokeFamily(payload.fid);
+    let payload: RefreshTokenPayload;
+    try {
+      // Signature is checked so a forged token cannot revoke someone else's family;
+      // expiration is ignored so an expired session can still be logged out.
+      payload = await this.jwt.verifyAsync<RefreshTokenPayload>(token, {
+        secret: this.config.getOrThrow<string>('JWT_REFRESH_SECRET'),
+        algorithms: ['HS256'],
+        ignoreExpiration: true,
+      });
+    } catch {
+      return;
+    }
+    if (payload.fid) await this.revokeFamily(payload.fid);
   }
 
   async changePassword(
@@ -123,10 +159,7 @@ export class AuthService {
     newPassword: string,
   ): Promise<void> {
     const user = await this.users.findByIdWithPassword(userId);
-    if (
-      !user.passwordHash ||
-      !(await verifyPassword(currentPassword, user.passwordHash))
-    ) {
+    if (!(await verifyPasswordOrDummy(currentPassword, user.passwordHash))) {
       throw new AppException(
         ErrorCode.AUTH_WRONG_PASSWORD,
         HttpStatus.BAD_REQUEST,
@@ -134,10 +167,7 @@ export class AuthService {
       );
     }
     await this.users.setPassword(userId, newPassword);
-    await this.refreshTokens.updateMany(
-      { userId: user._id, revokedAt: null },
-      { revokedAt: new Date() },
-    );
+    await revokeRefreshTokens(this.refreshTokens, { userId: user._id });
   }
 
   private async issueTokens(
@@ -174,10 +204,7 @@ export class AuthService {
     return { accessToken, refreshToken };
   }
 
-  private async revokeFamily(familyId: string): Promise<void> {
-    await this.refreshTokens.updateMany(
-      { familyId, revokedAt: null },
-      { revokedAt: new Date() },
-    );
+  private revokeFamily(familyId: string): Promise<void> {
+    return revokeRefreshTokens(this.refreshTokens, { familyId });
   }
 }
