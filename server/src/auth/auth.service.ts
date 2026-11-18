@@ -2,7 +2,7 @@ import { HttpStatus, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { InjectModel } from '@nestjs/mongoose';
-import { ErrorCode } from '@thesis/shared';
+import { ErrorCode, isExternalOnly } from '@thesis/shared';
 import { randomUUID } from 'node:crypto';
 import { Model } from 'mongoose';
 import { AppException } from '../common/errors/app.exception';
@@ -58,7 +58,8 @@ export class AuthService {
     // Always run bcrypt (against a dummy hash when there is none) so timing does not reveal
     // whether the email exists or belongs to an external juror without password.
     const valid = await verifyPasswordOrDummy(password, user?.passwordHash);
-    if (!user || !valid) {
+    // External-only users never log in with a password (RF-J14), even with a legacy hash.
+    if (!user || !valid || isExternalOnly(user.roles)) {
       throw new AppException(
         ErrorCode.AUTH_INVALID_CREDENTIALS,
         HttpStatus.UNAUTHORIZED,

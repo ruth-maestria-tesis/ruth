@@ -96,6 +96,36 @@ describe('Users (e2e)', () => {
     expect(res.body.jurorProfile.isUnicordoba).toBe(false);
   });
 
+  it('rejects a password for an external-only juror', async () => {
+    const res = await admin
+      .post('/api/users')
+      .send({
+        email: 'ext.pass@uni.example.org',
+        password: TEST_PASSWORD,
+        firstName: 'Eva',
+        lastName: 'Rojas',
+        roles: [Role.EXTERNAL_JUROR],
+        jurorProfile: {
+          institution: 'Universidad de Chile',
+          isUnicordoba: false,
+        },
+      })
+      .expect(400);
+    expect(res.body.code).toBe('USER_PASSWORD_NOT_ALLOWED');
+  });
+
+  it('removes the password when a user becomes external-only', async () => {
+    const juror = await createUser(app, { roles: [Role.INTERNAL_JUROR] });
+    await admin
+      .patch(`/api/users/${juror.id as string}`)
+      .send({ roles: [Role.EXTERNAL_JUROR] })
+      .expect(200);
+    await request(http(app))
+      .post('/api/auth/login')
+      .send({ email: juror.email, password: TEST_PASSWORD })
+      .expect(401);
+  });
+
   it('rejects invalid payloads with VALIDATION_FAILED', async () => {
     const res = await admin
       .post('/api/users')

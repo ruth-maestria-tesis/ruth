@@ -14,4 +14,12 @@ export const envValidationSchema = Joi.object({
   JWT_ACCESS_TTL_SECONDS: Joi.number().integer().positive().default(900),
   JWT_REFRESH_TTL_DAYS: Joi.number().integer().positive().default(7),
   COOKIE_SAME_SITE: Joi.string().valid('lax', 'strict', 'none').default('lax'),
+  /** RF-J14 link lifetime. */
+  EXTERNAL_TOKEN_TTL_DAYS: Joi.number().integer().min(1).max(365).default(60),
+  /** Access-cookie lifetime of an external-juror session (no refresh token). */
+  EXTERNAL_SESSION_TTL_SECONDS: Joi.number()
+    .integer()
+    .min(300)
+    .max(86_400)
+    .default(14_400),
 });

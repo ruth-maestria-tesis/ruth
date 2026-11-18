@@ -1,0 +1,31 @@
+export enum AssignmentStatus {
+  PENDING = 'PENDING',
+  ACCEPTED = 'ACCEPTED',
+  DECLINED = 'DECLINED',
+  EXPIRED = 'EXPIRED',
+  REPLACED = 'REPLACED',
+}
+
+export enum AssignmentType {
+  PRIMARY = 'PRIMARY',
+  TIEBREAKER = 'TIEBREAKER',
+}
+
+/** Statuses that occupy a jury slot. */
+export const ACTIVE_ASSIGNMENT_STATUSES: readonly AssignmentStatus[] = [
+  AssignmentStatus.PENDING,
+  AssignmentStatus.ACCEPTED,
+];
+
+/** Reasons a proposed jury is rejected (RF-C13, RN-01, RF-C14). Sent in details.violations. */
+export enum JuryViolation {
+  JUROR_COUNT = 'JUROR_COUNT',
+  JUROR_DUPLICATE = 'JUROR_DUPLICATE',
+  JUROR_NOT_FOUND = 'JUROR_NOT_FOUND',
+  JUROR_INACTIVE = 'JUROR_INACTIVE',
+  JUROR_NOT_FACULTY = 'JUROR_NOT_FACULTY',
+  JUROR_CONFLICT_OF_INTEREST = 'JUROR_CONFLICT_OF_INTEREST',
+  JUROR_PREVIOUSLY_ASSIGNED = 'JUROR_PREVIOUSLY_ASSIGNED',
+  JUROR_EMAIL_TAKEN = 'JUROR_EMAIL_TAKEN',
+  JUROR_UNICORDOBA_REQUIRED = 'JUROR_UNICORDOBA_REQUIRED',
+}

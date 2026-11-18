@@ -20,4 +20,17 @@ describe('envValidationSchema', () => {
     expect(result.error).toBeUndefined();
     expect((result.value as { NODE_ENV: string }).NODE_ENV).toBe('production');
   });
+
+  it('defaults the external juror link settings', () => {
+    const result = envValidationSchema.validate({
+      ...base,
+      NODE_ENV: 'test',
+    });
+    const value = result.value as {
+      EXTERNAL_TOKEN_TTL_DAYS: number;
+      EXTERNAL_SESSION_TTL_SECONDS: number;
+    };
+    expect(value.EXTERNAL_TOKEN_TTL_DAYS).toBe(60);
+    expect(value.EXTERNAL_SESSION_TTL_SECONDS).toBe(14400);
+  });
 });

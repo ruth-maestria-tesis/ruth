@@ -9,6 +9,7 @@ import {
   createUser,
   http,
   loginAgent,
+  signedAgent,
   TestAgent,
 } from './utils/test-app';
 
@@ -74,7 +75,12 @@ describe('RBAC matrix — stage 2 (e2e)', () => {
     app = await createTestApp();
     for (const role of WITH_EXTERNAL) {
       const u = await createUser(app, { roles: [role] });
-      agents.set(role, await loginAgent(app, u.email));
+      agents.set(
+        role,
+        role === Role.EXTERNAL_JUROR
+          ? await signedAgent(app, u)
+          : await loginAgent(app, u.email),
+      );
     }
     const thesis = await createThesis(app, await createCatalog(app));
     rows = matrix(thesis.id as string);

@@ -6,6 +6,8 @@ import { Role } from '@thesis/shared';
 import type { Model } from 'mongoose';
 import request, { Response } from 'supertest';
 import { RefreshToken } from '../src/auth/schemas/refresh-token.schema';
+import { hashPassword } from '../src/common/security/password';
+import { User } from '../src/users/schemas/user.schema';
 import {
   closeTestApp,
   createTestApp,
@@ -73,6 +75,22 @@ describe('Auth (e2e)', () => {
     });
     const res = await login({
       email: juror.email,
+      password: TEST_PASSWORD,
+    }).expect(401);
+    expect(res.body.code).toBe('AUTH_INVALID_CREDENTIALS');
+  });
+
+  it('refuses password login for an external-only user even with a legacy hash', async () => {
+    const ext = await createUser(app, { roles: [Role.EXTERNAL_JUROR] });
+    // Simulate data created before the rule existed.
+    await app
+      .get<Model<User>>(getModelToken(User.name))
+      .updateOne(
+        { _id: ext._id },
+        { passwordHash: await hashPassword(TEST_PASSWORD) },
+      );
+    const res = await login({
+      email: ext.email,
       password: TEST_PASSWORD,
     }).expect(401);
     expect(res.body.code).toBe('AUTH_INVALID_CREDENTIALS');

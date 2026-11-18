@@ -1,7 +1,15 @@
 import { INestApplication } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
 import { getConnectionToken } from '@nestjs/mongoose';
 import { Test } from '@nestjs/testing';
-import { JUROR_ROLES, PeriodTerm, ProgramLevel, Role } from '@thesis/shared';
+import {
+  isExternalOnly,
+  JUROR_ROLES,
+  PeriodTerm,
+  ProgramLevel,
+  Role,
+} from '@thesis/shared';
 import type { Connection } from 'mongoose';
 import { randomUUID } from 'node:crypto';
 import request from 'supertest';
@@ -12,6 +20,7 @@ import { CatalogsService } from '../../src/catalogs/catalogs.service';
 import { ThesisDocument } from '../../src/theses/schemas/thesis.schema';
 import { ThesesService } from '../../src/theses/theses.service';
 import { CreateUserDto } from '../../src/users/dto/create-user.dto';
+import { NewExternalJurorDto } from '../../src/users/dto/external-juror.dto';
 import { UserDocument } from '../../src/users/schemas/user.schema';
 import { UsersService } from '../../src/users/users.service';
 
@@ -47,7 +56,7 @@ export function createUser(
   const isJuror = data.roles.some((r) => JUROR_ROLES.includes(r));
   return app.get(UsersService).create({
     email: `${data.roles[0].toLowerCase()}.${randomUUID().slice(0, 8)}@test.edu.co`,
-    password: TEST_PASSWORD,
+    password: isExternalOnly(data.roles) ? undefined : TEST_PASSWORD,
     firstName: 'Test',
     lastName: 'User',
     jurorProfile: isJuror
@@ -66,6 +75,37 @@ export async function loginAgent(
   const agent = request.agent(http(app));
   await agent.post('/api/auth/login').send({ email, password }).expect(200);
   return agent;
+}
+
+/** Agent authenticated with a directly signed access token (e.g. external jurors, scoped sessions). */
+export async function signedAgent(
+  app: INestApplication,
+  user: { id: unknown; email: string; roles: Role[] },
+  scope?: { assignmentIds: string[] },
+): Promise<TestAgent> {
+  const token = await app.get(JwtService).signAsync(
+    { sub: String(user.id), email: user.email, roles: user.roles, scope },
+    {
+      secret: app.get(ConfigService).getOrThrow<string>('JWT_ACCESS_SECRET'),
+      expiresIn: 900,
+    },
+  );
+  return request.agent(http(app)).set('Authorization', `Bearer ${token}`);
+}
+
+export function createExternalJuror(
+  app: INestApplication,
+  data: Partial<NewExternalJurorDto> = {},
+): Promise<UserDocument> {
+  return app.get(UsersService).createExternalJuror({
+    email: `ext.${randomUUID().slice(0, 8)}@uni.example.org`,
+    firstName: 'Elena',
+    lastName: 'Externa',
+    institution: 'Universidad Nacional de La Plata',
+    highestDegree: 'Doctorado',
+    country: 'Argentina',
+    ...data,
+  });
 }
 
 export interface CatalogFixture {

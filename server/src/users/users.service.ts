@@ -1,6 +1,6 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { ErrorCode, JUROR_ROLES, Role } from '@thesis/shared';
+import { ErrorCode, isExternalOnly, JUROR_ROLES, Role } from '@thesis/shared';
 import { FilterQuery, isValidObjectId, Model, Types } from 'mongoose';
 import {
   RefreshToken,
@@ -12,6 +12,7 @@ import { paginate, SortFields } from '../common/pagination/paginate';
 import { hashPassword } from '../common/security/password';
 import { escapeRegex } from '../common/utils/escape-regex';
 import { CreateUserDto } from './dto/create-user.dto';
+import { NewExternalJurorDto } from './dto/external-juror.dto';
 import { QueryUsersDto } from './dto/query-users.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { User, UserDocument } from './schemas/user.schema';
@@ -43,6 +44,13 @@ export class UsersService {
   ) {}
 
   async create(dto: CreateUserDto): Promise<UserDocument> {
+    if (dto.password && isExternalOnly(dto.roles)) {
+      throw new AppException(
+        ErrorCode.USER_PASSWORD_NOT_ALLOWED,
+        HttpStatus.BAD_REQUEST,
+        'External jurors use token access and cannot have a password',
+      );
+    }
     this.assertRoleInvariants(dto.roles, !!dto.password, !!dto.jurorProfile);
     if (await this.model.exists({ email: dto.email.toLowerCase() })) {
       throw new AppException(
@@ -56,6 +64,33 @@ export class UsersService {
       ...rest,
       passwordHash: password ? await hashPassword(password) : undefined,
     });
+  }
+
+  /** RF-C14: external juror created during CU-01 or a replacement. */
+  createExternalJuror(dto: NewExternalJurorDto): Promise<UserDocument> {
+    return this.create({
+      email: dto.email,
+      firstName: dto.firstName,
+      lastName: dto.lastName,
+      roles: [Role.EXTERNAL_JUROR],
+      jurorProfile: {
+        institution: dto.institution,
+        isUnicordoba: false,
+        highestDegree: dto.highestDegree,
+        country: dto.country,
+      },
+    });
+  }
+
+  findManyByEmails(emails: readonly string[]): Promise<UserDocument[]> {
+    return this.model
+      .find({ email: { $in: emails.map((e) => e.toLowerCase()) } })
+      .exec();
+  }
+
+  /** Only for compensating a failed multi-step write (e.g. CU-01 inline jurors). */
+  async deleteByIds(ids: readonly string[]): Promise<void> {
+    await this.model.deleteMany({ _id: { $in: ids } }).exec();
   }
 
   async findById(id: string): Promise<UserDocument> {
@@ -153,10 +188,12 @@ export class UsersService {
       if (existing.isActive) await this.assertNotLastActiveAdmin(id);
     }
 
-    const updated = await this.model.findByIdAndUpdate(id, dto, {
-      new: true,
-      runValidators: true,
-    });
+    // A user turned external-only loses password login (RF-J14 token access only).
+    const updated = await this.model.findByIdAndUpdate(
+      id,
+      isExternalOnly(roles) ? { $set: dto, $unset: { passwordHash: 1 } } : dto,
+      { new: true, runValidators: true },
+    );
     if (!updated)
       throw new AppException(
         ErrorCode.USER_NOT_FOUND,
@@ -199,8 +236,7 @@ export class UsersService {
     hasPassword: boolean,
     hasJurorProfile: boolean,
   ): void {
-    const isExternalOnly = roles.every((r) => r === Role.EXTERNAL_JUROR);
-    if (!hasPassword && !isExternalOnly) {
+    if (!hasPassword && !isExternalOnly(roles)) {
       throw new AppException(
         ErrorCode.USER_PASSWORD_REQUIRED,
         HttpStatus.BAD_REQUEST,
