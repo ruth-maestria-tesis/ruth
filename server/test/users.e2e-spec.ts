@@ -105,6 +105,27 @@ describe('Users (e2e)', () => {
     expect(Array.isArray(res.body.details)).toBe(true);
   });
 
+  it('rejects duplicated roles with VALIDATION_FAILED', async () => {
+    const res = await admin
+      .post('/api/users')
+      .send({
+        ...newCoordinator,
+        email: 'dup.roles@test.edu.co',
+        roles: [Role.COORDINATOR, Role.COORDINATOR],
+      })
+      .expect(400);
+    expect(res.body.code).toBe('VALIDATION_FAILED');
+  });
+
+  it('rejects duplicated roles on update with VALIDATION_FAILED', async () => {
+    const user = await createUser(app, { roles: [Role.COORDINATOR] });
+    const res = await admin
+      .patch(`/api/users/${user.id}`)
+      .send({ roles: [Role.COORDINATOR, Role.COORDINATOR] })
+      .expect(400);
+    expect(res.body.code).toBe('VALIDATION_FAILED');
+  });
+
   it('forbids coordinators from creating users', async () => {
     const res = await coordinator
       .post('/api/users')
@@ -292,6 +313,16 @@ describe('Users (e2e)', () => {
     it('an admin cannot deactivate themselves', async () => {
       const res = await admin
         .patch(`/api/users/${adminId}/status`)
+        .send({ isActive: false })
+        .expect(400);
+      expect(res.body.code).toBe('USER_SELF_LOCKOUT');
+    });
+
+    it('rejects self-deactivation through an uppercased own id', async () => {
+      // Another active admin exists, so only the self check can stop this request.
+      await createUser(app, { roles: [Role.ADMIN] });
+      const res = await admin
+        .patch(`/api/users/${adminId.toUpperCase()}/status`)
         .send({ isActive: false })
         .expect(400);
       expect(res.body.code).toBe('USER_SELF_LOCKOUT');

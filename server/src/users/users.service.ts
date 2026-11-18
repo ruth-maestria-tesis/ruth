@@ -21,8 +21,12 @@ const USER_SORT_FIELDS = ['email', 'firstName', 'lastName', 'createdAt'];
 const FACULTY_PROJECTION =
   'firstName lastName email roles isActive jurorProfile';
 
-const sameRoles = (a: readonly Role[], b: readonly Role[]) =>
-  a.length === b.length && a.every((r) => b.includes(r));
+/** Set comparison: order and duplicates do not matter. */
+const sameRoles = (a: readonly Role[], b: readonly Role[]) => {
+  const left = new Set(a);
+  const right = new Set(b);
+  return left.size === right.size && [...left].every((r) => right.has(r));
+};
 
 @Injectable()
 export class UsersService {
@@ -142,7 +146,7 @@ export class UsersService {
     const losesAdmin =
       existing.roles.includes(Role.ADMIN) && !roles.includes(Role.ADMIN);
     if (losesAdmin) {
-      this.assertNotSelf(id, actorId);
+      this.assertNotSelf(existing, actorId);
       if (existing.isActive) await this.assertNotLastActiveAdmin(id);
     }
 
@@ -169,7 +173,7 @@ export class UsersService {
   ): Promise<UserDocument> {
     const user = await this.findById(id);
     if (!isActive) {
-      this.assertNotSelf(id, actorId);
+      this.assertNotSelf(user, actorId);
       if (user.isActive && user.roles.includes(Role.ADMIN))
         await this.assertNotLastActiveAdmin(id);
     }
@@ -209,9 +213,12 @@ export class UsersService {
     }
   }
 
-  /** An admin cannot demote or deactivate themselves. */
-  private assertNotSelf(targetId: string, actorId: string): void {
-    if (targetId === actorId) {
+  /**
+   * An admin cannot demote or deactivate themselves. Compares against the loaded
+   * document's ObjectId, so case variants of the hex id in the URL cannot bypass it.
+   */
+  private assertNotSelf(target: UserDocument, actorId: string): void {
+    if (target._id.equals(actorId)) {
       throw new AppException(
         ErrorCode.USER_SELF_LOCKOUT,
         HttpStatus.BAD_REQUEST,
@@ -220,6 +227,10 @@ export class UsersService {
     }
   }
 
+  /**
+   * Count-then-write without a transaction: two concurrent demotions/deactivations of
+   * the last two admins could both pass. Accepted for this prototype.
+   */
   private async assertNotLastActiveAdmin(targetId: string): Promise<void> {
     const others = await this.model.countDocuments({
       _id: { $ne: targetId },

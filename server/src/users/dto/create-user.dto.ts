@@ -1,6 +1,7 @@
 import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
+  ArrayUnique,
   IsArray,
   IsBoolean,
   IsEmail,
@@ -78,6 +79,7 @@ export class CreateUserDto {
 
   @IsArray()
   @ArrayMinSize(1)
+  @ArrayUnique()
   @IsEnum(Role, { each: true })
   roles!: Role[];
 

@@ -1,7 +1,11 @@
 import { INestApplication } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
+import { getModelToken } from '@nestjs/mongoose';
 import { Role } from '@thesis/shared';
+import type { Model } from 'mongoose';
 import request, { Response } from 'supertest';
+import { RefreshToken } from '../src/auth/schemas/refresh-token.schema';
 import {
   closeTestApp,
   createTestApp,
@@ -135,7 +139,7 @@ describe('Auth (e2e)', () => {
       .expect(401);
   });
 
-  it('allows exactly one of two concurrent refreshes with the same token', async () => {
+  it('never lets a concurrent refresh with the same token keep a live session', async () => {
     const server = http(app);
     const token = cookiesOf(
       await login({ email, password: TEST_PASSWORD }).expect(200),
@@ -148,20 +152,38 @@ describe('Auth (e2e)', () => {
           .set('Cookie', `refresh_token=${token}`),
       ),
     );
-    const statuses = results.map((r) => r.status).sort();
-    expect(statuses).toEqual([200, 401]);
-    const winner = results.find((r) => r.status === 200)!;
-    const loser = results.find((r) => r.status === 401)!;
-    expect(loser.body.code).toBe('AUTH_REFRESH_INVALID');
+    // Only one call can claim the token; the other is treated as reuse and revokes the
+    // family. If that revocation lands before the claimant's post-insert re-check, the
+    // claimant fails too, so either zero or one call may answer 200, never two.
+    const winners = results.filter((r) => r.status === 200);
+    const losers = results.filter((r) => r.status !== 200);
+    expect(winners.length).toBeLessThanOrEqual(1);
+    expect(losers.length).toBeGreaterThanOrEqual(1);
+    for (const loser of losers) {
+      expect(loser.status).toBe(401);
+      expect(loser.body.code).toBe('AUTH_REFRESH_INVALID');
+    }
 
-    // The losing call is treated as reuse: the whole family, including the winner's new token, is revoked.
-    const issued = cookiesOf(winner).refresh_token;
-    expect(issued).toBeTruthy();
-    const replay = await request(server)
-      .post('/api/auth/refresh')
-      .set('Cookie', `refresh_token=${issued}`)
-      .expect(401);
-    expect(replay.body.code).toBe('AUTH_REFRESH_INVALID');
+    // Any token the winner may have received is already revoked.
+    for (const winner of winners) {
+      const issued = cookiesOf(winner).refresh_token;
+      expect(issued).toBeTruthy();
+      const replay = await request(server)
+        .post('/api/auth/refresh')
+        .set('Cookie', `refresh_token=${issued}`)
+        .expect(401);
+      expect(replay.body.code).toBe('AUTH_REFRESH_INVALID');
+    }
+
+    // Whatever the interleaving, no token of the family is left usable.
+    const { fid } = app.get(JwtService).decode<{ fid: string }>(token);
+    const tokens = app.get<Model<RefreshToken>>(
+      getModelToken(RefreshToken.name),
+    );
+    expect(await tokens.countDocuments({ familyId: fid })).toBeGreaterThan(0);
+    expect(
+      await tokens.countDocuments({ familyId: fid, revokedAt: null }),
+    ).toBe(0);
   });
 
   it('rejects refresh without cookie', async () => {
@@ -212,6 +234,29 @@ describe('Auth (e2e)', () => {
       .set('Cookie', `refresh_token=${forged}`)
       .expect(204);
     // The forged cookie carried the real family id but must not have revoked it.
+    await request(server)
+      .post('/api/auth/refresh')
+      .set('Cookie', `refresh_token=${token}`)
+      .expect(200);
+  });
+
+  it('rejects a refresh token signed with HS512 even with the right secret', async () => {
+    const server = http(app);
+    const token = cookiesOf(
+      await login({ email, password: TEST_PASSWORD }).expect(200),
+    ).refresh_token;
+    const jwt = app.get(JwtService);
+    const hs512 = await jwt.signAsync(jwt.decode<object>(token), {
+      secret: app.get(ConfigService).getOrThrow<string>('JWT_REFRESH_SECRET'),
+      algorithm: 'HS512',
+    });
+
+    const res = await request(server)
+      .post('/api/auth/refresh')
+      .set('Cookie', `refresh_token=${hs512}`)
+      .expect(401);
+    expect(res.body.code).toBe('AUTH_REFRESH_INVALID');
+    // Rejected at verification, before reuse detection: the real family is still usable.
     await request(server)
       .post('/api/auth/refresh')
       .set('Cookie', `refresh_token=${token}`)

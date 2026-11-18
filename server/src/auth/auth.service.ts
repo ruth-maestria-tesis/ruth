@@ -131,6 +131,8 @@ export class AuthService {
         { tokenHash: newHash, revokedAt: null },
         { $set: { revokedAt: new Date() } },
       );
+      // The session was revoked: the race winner gets nothing either.
+      throw refreshInvalid();
     }
     return { user, ...tokens };
   }
