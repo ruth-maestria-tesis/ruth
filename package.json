@@ -1,0 +1,10 @@
+{
+  "name": "thesis-repository",
+  "private": true,
+  "scripts": {
+    "build:shared": "pnpm --filter @thesis/shared build",
+    "dev:server": "pnpm --filter server start:dev",
+    "test:server": "pnpm --filter server test && pnpm --filter server test:e2e",
+    "lint:server": "pnpm --filter server lint"
+  }
+}
