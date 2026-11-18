@@ -5,6 +5,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AuthModule } from './auth/auth.module';
+import { CatalogsModule } from './catalogs/catalogs.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { envValidationSchema } from './config/env.validation';
@@ -32,6 +33,7 @@ import { UsersModule } from './users/users.module';
     JwtModule.register({ global: true }),
     UsersModule,
     AuthModule,
+    CatalogsModule,
   ],
   controllers: [HealthController],
   providers: [

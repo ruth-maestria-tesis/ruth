@@ -23,8 +23,12 @@ const STATUS_CODES: Record<number, ErrorCode> = {
   403: ErrorCode.AUTH_FORBIDDEN,
   404: ErrorCode.NOT_FOUND,
   409: ErrorCode.CONFLICT,
-  413: ErrorCode.FILE_TOO_LARGE,
   429: ErrorCode.RATE_LIMITED,
+};
+
+/** Only for HttpException (multer's PayloadTooLargeException); plain 413 objects stay HTTP_ERROR. */
+const HTTP_EXCEPTION_ONLY_CODES: Record<number, ErrorCode> = {
+  413: ErrorCode.FILE_TOO_LARGE,
 };
 
 function isMongoDuplicateKey(
@@ -72,7 +76,10 @@ export function toErrorBody(exception: unknown): ErrorBody {
       };
     }
     const response = exception.getResponse();
-    const code = STATUS_CODES[statusCode] ?? ErrorCode.HTTP_ERROR;
+    const code =
+      HTTP_EXCEPTION_ONLY_CODES[statusCode] ??
+      STATUS_CODES[statusCode] ??
+      ErrorCode.HTTP_ERROR;
     if (
       typeof response === 'object' &&
       response !== null &&

@@ -1,13 +1,14 @@
 import { INestApplication } from '@nestjs/common';
 import { getConnectionToken } from '@nestjs/mongoose';
 import { Test } from '@nestjs/testing';
-import { JUROR_ROLES } from '@thesis/shared';
+import { JUROR_ROLES, PeriodTerm, ProgramLevel } from '@thesis/shared';
 import type { Connection } from 'mongoose';
 import { randomUUID } from 'node:crypto';
 import request from 'supertest';
 import type { App } from 'supertest/types';
 import { AppModule } from '../../src/app.module';
 import { configureApp } from '../../src/app.setup';
+import { CatalogsService } from '../../src/catalogs/catalogs.service';
 import { CreateUserDto } from '../../src/users/dto/create-user.dto';
 import { UserDocument } from '../../src/users/schemas/user.schema';
 import { UsersService } from '../../src/users/users.service';
@@ -63,4 +64,44 @@ export async function loginAgent(
   const agent = request.agent(http(app));
   await agent.post('/api/auth/login').send({ email, password }).expect(200);
   return agent;
+}
+
+export interface CatalogFixture {
+  programId: string;
+  periodId: string;
+  cohortId: string;
+}
+
+/** Creates a program, period and cohort with unique codes. */
+export async function createCatalog(
+  app: INestApplication,
+  opts: { programCode?: string; year?: number; term?: PeriodTerm } = {},
+): Promise<CatalogFixture> {
+  const catalogs = app.get(CatalogsService);
+  const program = await catalogs.createProgram({
+    code: opts.programCode ?? `P${randomUUID().slice(0, 6).toUpperCase()}`,
+    name: 'Programa de prueba',
+    level: ProgramLevel.MASTER,
+  });
+  const year = opts.year ?? 2000 + Math.floor(Math.random() * 100);
+  const term = opts.term ?? PeriodTerm.II;
+  const period =
+    (await catalogs.listPeriods()).find((p) => p.code === `${year}-${term}`) ??
+    (await catalogs.createPeriod({
+      year,
+      term,
+      startsAt: `${year}-07-01`,
+      endsAt: `${year}-12-15`,
+    }));
+  const cohort = await catalogs.createCohort({
+    programId: program.id as string,
+    periodId: period.id as string,
+    number: 1,
+    name: 'Corte 1',
+  });
+  return {
+    programId: program.id as string,
+    periodId: period.id as string,
+    cohortId: cohort.id as string,
+  };
 }

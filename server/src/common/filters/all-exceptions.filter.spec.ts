@@ -134,4 +134,12 @@ describe('toErrorBody', () => {
       },
     );
   });
+
+  it('maps a plain { status: 413 } object to HTTP_ERROR, not FILE_TOO_LARGE', () => {
+    expect(toErrorBody({ status: 413 })).toEqual({
+      statusCode: 413,
+      code: ErrorCode.HTTP_ERROR,
+      message: 'Request error',
+    });
+  });
 });
