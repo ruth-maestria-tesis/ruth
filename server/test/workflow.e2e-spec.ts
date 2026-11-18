@@ -107,6 +107,62 @@ describe('WorkflowService (e2e)', () => {
     ).rejects.toMatchObject({ code: 'WORKFLOW_INVALID_TRANSITION' });
   });
 
+  it('accepts expectedFrom when the current status is in the list', async () => {
+    const t = await insertThesis(S.SUBMITTED);
+    const updated = await workflow.transition({
+      thesisId: t.id as string,
+      expectedFrom: [S.SUBMITTED, S.PENDING_JUROR_REPLACEMENT],
+      to: S.JURORS_ASSIGNED,
+      actor,
+    });
+    expect(updated.status).toBe(S.JURORS_ASSIGNED);
+  });
+
+  it('records a SYSTEM actor without actorId', async () => {
+    const t = await insertThesis(S.SUBMITTED);
+    const updated = await workflow.transition({
+      thesisId: t.id as string,
+      to: S.JURORS_ASSIGNED,
+      actor: { role: 'SYSTEM' },
+    });
+    expect(updated.history[0].actorId).toBeUndefined();
+    expect(updated.history[0].actorRole).toBe('SYSTEM');
+  });
+
+  it('persists evidenceFileIds in the history entry', async () => {
+    const t = await insertThesis(S.SUBMITTED);
+    const fileId = new Types.ObjectId().toHexString();
+    const updated = await workflow.transition({
+      thesisId: t.id as string,
+      to: S.JURORS_ASSIGNED,
+      actor,
+      evidenceFileIds: [fileId],
+    });
+    expect(
+      updated.history[0].evidenceFileIds.map((i) => i.toHexString()),
+    ).toEqual([fileId]);
+  });
+
+  it('rejects an invalid evidence id with VALIDATION_FAILED and leaves the thesis untouched', async () => {
+    const t = await insertThesis(S.SUBMITTED);
+    await expect(
+      workflow.transition({
+        thesisId: t.id as string,
+        to: S.JURORS_ASSIGNED,
+        actor,
+        evidenceFileIds: ['not-an-id'],
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+    expect((await theses.findById(t.id))?.status).toBe(S.SUBMITTED);
+  });
+
+  it('rejects any transition out of a terminal status', async () => {
+    const t = await insertThesis(S.NOT_APPROVED);
+    await expect(
+      workflow.transition({ thesisId: t.id as string, to: S.SUBMITTED, actor }),
+    ).rejects.toMatchObject({ code: 'WORKFLOW_INVALID_TRANSITION' });
+  });
+
   it('only one of two concurrent identical transitions wins', async () => {
     const t = await insertThesis(S.SUBMITTED);
     const results = await Promise.allSettled([

@@ -74,7 +74,7 @@ export class Thesis {
   @Prop({ type: ObjectId, ref: 'User', required: true })
   studentId!: Types.ObjectId;
 
-  /** Denormalized "First Last" for sort=student and text search. */
+  /** Denormalized "First Last" for sort=student and q regex search. */
   @Prop({ required: true })
   studentName!: string;
 
@@ -135,4 +135,7 @@ ThesisSchema.index({ periodId: 1, cohortId: 1 });
 ThesisSchema.index({ programId: 1 });
 ThesisSchema.index({ studentId: 1 });
 ThesisSchema.index({ seedTag: 1 });
-ThesisSchema.index({ title: 'text', code: 'text' });
+ThesisSchema.index(
+  { title: 'text', code: 'text' },
+  { default_language: 'spanish' },
+);

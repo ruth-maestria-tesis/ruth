@@ -60,6 +60,18 @@ export class WorkflowService {
       );
     }
 
+    const evidenceFileIds = input.evidenceFileIds ?? [];
+    if (
+      (input.actor.id && !isValidObjectId(input.actor.id)) ||
+      !evidenceFileIds.every((id) => isValidObjectId(id))
+    ) {
+      throw new AppException(
+        ErrorCode.VALIDATION_FAILED,
+        HttpStatus.BAD_REQUEST,
+        'Invalid id',
+      );
+    }
+
     const at = new Date();
     const entry: HistoryEntry = {
       from,
@@ -68,9 +80,7 @@ export class WorkflowService {
       actorId: input.actor.id ? new Types.ObjectId(input.actor.id) : undefined,
       actorRole: input.actor.role,
       reason: input.reason,
-      evidenceFileIds: (input.evidenceFileIds ?? []).map(
-        (id) => new Types.ObjectId(id),
-      ),
+      evidenceFileIds: evidenceFileIds.map((id) => new Types.ObjectId(id)),
     };
     const updated = await this.theses
       .findOneAndUpdate(
@@ -98,8 +108,10 @@ export class WorkflowService {
       actorId: input.actor.id,
       actorRole: input.actor.role,
       reason: input.reason,
+      evidenceFileIds: [...evidenceFileIds],
       at,
     };
+    // Emit runs after the write: listeners must use @OnEvent (errors suppressed), never raw .on.
     this.events.emit(THESIS_STATUS_CHANGED, event);
     return updated;
   }

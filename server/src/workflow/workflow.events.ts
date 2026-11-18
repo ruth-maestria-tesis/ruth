@@ -10,5 +10,6 @@ export interface ThesisStatusChangedEvent {
   actorId?: string;
   actorRole: string;
   reason?: string;
+  evidenceFileIds: string[];
   at: Date;
 }
