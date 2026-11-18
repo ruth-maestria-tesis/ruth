@@ -7,11 +7,11 @@ import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 /** Global HTTP configuration shared by main.ts and the e2e tests. */
 export function configureApp(app: INestApplication): void {
   const config = app.get(ConfigService);
-  const isProd = config.get<string>('NODE_ENV') === 'production';
+  const isDev = config.get<string>('NODE_ENV') === 'development';
 
   app.setGlobalPrefix('api');
-  // Swagger UI needs inline scripts, so CSP is only enforced in production (where Swagger is disabled).
-  app.use(helmet({ contentSecurityPolicy: isProd ? undefined : false }));
+  // Swagger UI needs inline scripts, so CSP is relaxed only in development (the only env that serves Swagger).
+  app.use(helmet({ contentSecurityPolicy: isDev ? false : undefined }));
   app.use(cookieParser());
   app.enableCors({
     origin: config.get<string>('CLIENT_URL', 'http://localhost:3000'),

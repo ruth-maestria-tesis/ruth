@@ -1,6 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { closeTestApp, createTestApp } from './utils/test-app';
+import { closeTestApp, createTestApp, http } from './utils/test-app';
 
 describe('Health (e2e)', () => {
   let app: INestApplication;
@@ -11,19 +11,17 @@ describe('Health (e2e)', () => {
   afterAll(() => closeTestApp(app));
 
   it('GET /api/health is public', async () => {
-    const res = await request(app.getHttpServer())
-      .get('/api/health')
-      .expect(200);
+    const res = await request(http(app)).get('/api/health').expect(200);
     expect(res.body).toEqual({ status: 'ok' });
   });
 
   it('unknown routes return the uniform error body', async () => {
-    const res = await request(app.getHttpServer()).get('/api/nope').expect(404);
+    const res = await request(http(app)).get('/api/nope').expect(404);
     expect(res.body).toMatchObject({ statusCode: 404, code: 'NOT_FOUND' });
   });
 
   it('malformed JSON bodies return the uniform error body', async () => {
-    const res = await request(app.getHttpServer())
+    const res = await request(http(app))
       .post('/api/health')
       .set('Content-Type', 'application/json')
       .send('{bad json')

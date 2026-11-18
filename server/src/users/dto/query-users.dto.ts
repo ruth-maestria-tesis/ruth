@@ -1,0 +1,27 @@
+import { Transform } from 'class-transformer';
+import { IsBoolean, IsEnum, IsOptional, IsString } from 'class-validator';
+import { Role } from '@thesis/shared';
+import { PaginationQueryDto } from '../../common/pagination/pagination.dto';
+
+export class QueryUsersDto extends PaginationQueryDto {
+  @IsOptional()
+  @IsEnum(Role)
+  role?: Role;
+
+  @IsOptional()
+  @IsString()
+  q?: string;
+
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    value === 'true' ? true : value === 'false' ? false : value,
+  )
+  @IsBoolean()
+  isActive?: boolean;
+}
+
+export class FacultyQueryDto {
+  @IsOptional()
+  @IsString()
+  q?: string;
+}

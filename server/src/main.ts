@@ -8,7 +8,7 @@ async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
   configureApp(app);
   const config = app.get(ConfigService);
-  if (config.get<string>('NODE_ENV') !== 'production') setupSwagger(app);
+  if (config.get<string>('NODE_ENV') === 'development') setupSwagger(app);
   await app.listen(Number(config.get('PORT', 3001)));
 }
 

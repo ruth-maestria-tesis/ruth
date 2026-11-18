@@ -8,6 +8,7 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { envValidationSchema } from './config/env.validation';
 import { HealthController } from './health.controller';
+import { UsersModule } from './users/users.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { HealthController } from './health.controller';
     }),
     // Secrets are passed per sign/verify call; global so JwtAuthGuard can inject JwtService.
     JwtModule.register({ global: true }),
+    UsersModule,
   ],
   controllers: [HealthController],
   providers: [
