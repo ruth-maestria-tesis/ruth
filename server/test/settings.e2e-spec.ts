@@ -35,6 +35,8 @@ describe('Settings (e2e)', () => {
       holidays: [],
       thesisCodePrefix: 'MIETIA',
     });
+    expect(res.body.id).toBe('global');
+    expect(res.body.__v).toBeUndefined();
     await admin.get('/api/settings').expect(200);
   });
 
@@ -62,6 +64,8 @@ describe('Settings (e2e)', () => {
     [{ evaluationBusinessDays: 500 }],
     [{ holidays: ['08/12/2026'] }],
     [{ holidays: ['2026-12-08', '2026-12-08'] }],
+    [{ holidays: ['2026-02-31'] }],
+    [{ thesisCodePrefix: 'X' }],
     [{ acceptanceBusinessDays: null }],
   ])('rejects invalid input %j', async (body) => {
     await admin.patch('/api/settings').send(body).expect(400);

@@ -35,6 +35,8 @@ export function addBusinessDays(
   n: number,
   holidays: ReadonlySet<string>,
 ): Date {
+  if (!Number.isInteger(n) || n < 0)
+    throw new RangeError('n must be a non-negative integer');
   let key = localDateKey(from);
   let counted = 0;
   while (counted < n) {

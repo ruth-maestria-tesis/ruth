@@ -34,6 +34,7 @@ export class SettingsService {
 
   async update(dto: UpdateSettingsDto): Promise<SettingsDocument> {
     await this.get();
+    if (dto.holidays) dto = { ...dto, holidays: [...dto.holidays].sort() };
     const $set = Object.fromEntries(
       Object.entries(dto).filter(([, v]) => v !== undefined),
     );

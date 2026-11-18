@@ -3,6 +3,7 @@ import {
   ArrayUnique,
   IsArray,
   IsInt,
+  IsISO8601,
   Matches,
   Max,
   Min,
@@ -32,6 +33,7 @@ export class UpdateSettingsDto {
   @IsArray()
   @ArrayMaxSize(100)
   @ArrayUnique()
+  @IsISO8601({ strict: true, strictSeparator: true }, { each: true })
   @Matches(/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/, { each: true })
   holidays?: string[];
 }

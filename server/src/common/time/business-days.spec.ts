@@ -41,6 +41,11 @@ describe('business days (America/Bogotá, UTC−5)', () => {
     ).toBe('2026-11-24T04:59:59.999Z');
   });
 
+  it('rejects a negative or non-integer day count', () => {
+    expect(() => addBusinessDays(WED_NOON, -1, NONE)).toThrow(RangeError);
+    expect(() => addBusinessDays(WED_NOON, 1.5, NONE)).toThrow(RangeError);
+  });
+
   it('counts remaining business days in (today, deadline day]', () => {
     const deadline = addBusinessDays(WED_NOON, 8, NONE);
     expect(businessDaysRemaining(WED_NOON, deadline, NONE)).toBe(8);
