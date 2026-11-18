@@ -14,3 +14,15 @@ export function canReadThesis(
     return true;
   return user.roles.includes(Role.STUDENT) && thesis.studentId.equals(user.id);
 }
+
+/**
+ * Write access (manuscript upload): coordinators and the owner student.
+ * ADMIN alone is read-only, even if combined with another role.
+ */
+export function canWriteThesis(
+  user: AuthUser,
+  thesis: { studentId: Types.ObjectId },
+): boolean {
+  if (user.roles.includes(Role.COORDINATOR)) return true;
+  return user.roles.includes(Role.STUDENT) && thesis.studentId.equals(user.id);
+}

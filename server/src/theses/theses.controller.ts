@@ -6,14 +6,20 @@ import {
   Patch,
   Post,
   Query,
+  StreamableFile,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiBody, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { Role } from '@thesis/shared';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { ParseObjectIdPipe } from '../common/pipes/parse-object-id.pipe';
 import { actorFrom } from '../common/types/actor';
 import type { AuthUser } from '../common/types/auth-user';
+import { contentDisposition } from '../files/content-disposition';
+import { MAX_FILE_BYTES } from '../files/file-type';
 import { CreateThesisDto } from './dto/create-thesis.dto';
 import { QueryThesesDto } from './dto/query-theses.dto';
 import { UpdateThesisDto } from './dto/update-thesis.dto';
@@ -59,5 +65,46 @@ export class ThesesController {
     @Body() dto: UpdateThesisDto,
   ) {
     return this.theses.update(id, dto);
+  }
+
+  @Post(':id/manuscripts')
+  @Roles(Role.COORDINATOR, Role.STUDENT)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: MAX_FILE_BYTES, files: 1 },
+      // Decode non-ASCII multipart filenames as UTF-8 (multer defaults to latin1).
+      defParamCharset: 'utf8',
+    }),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { file: { type: 'string', format: 'binary' } },
+    },
+  })
+  uploadManuscript(
+    @Param('id', ParseObjectIdPipe) id: string,
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.theses.addManuscript(id, file, user);
+  }
+
+  @Get(':id/manuscripts/:fileId')
+  @Roles(Role.ADMIN, Role.COORDINATOR, Role.STUDENT)
+  async downloadManuscript(
+    @Param('id', ParseObjectIdPipe) id: string,
+    @Param('fileId', ParseObjectIdPipe) fileId: string,
+    @CurrentUser() user: AuthUser,
+  ): Promise<StreamableFile> {
+    const { info, stream } = await this.theses.openManuscript(id, fileId, user);
+    // StreamableFile attaches an error handler to the GridFS stream (logs; 400 or socket end),
+    // so a stream failure cannot become an unhandled 'error' event.
+    return new StreamableFile(stream, {
+      type: info.metadata?.mimeType ?? 'application/octet-stream',
+      disposition: contentDisposition(info.filename),
+      length: info.length,
+    });
   }
 }

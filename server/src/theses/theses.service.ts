@@ -2,6 +2,7 @@ import { HttpStatus, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import {
   ErrorCode,
+  FileKind,
   JUROR_ROLES,
   Role,
   TERMINAL_THESIS_STATUSES,
@@ -9,6 +10,7 @@ import {
   ThesisStatus,
 } from '@thesis/shared';
 import { FilterQuery, isValidObjectId, Model, Types } from 'mongoose';
+import type { Readable } from 'node:stream';
 import { CatalogsService } from '../catalogs/catalogs.service';
 import { AppException } from '../common/errors/app.exception';
 import { paginate, SortFields } from '../common/pagination/paginate';
@@ -16,6 +18,7 @@ import { Paginated } from '../common/pagination/pagination.dto';
 import type { Actor } from '../common/types/actor';
 import type { AuthUser } from '../common/types/auth-user';
 import { escapeRegex } from '../common/utils/escape-regex';
+import { FilesService, GridFile, UploadInput } from '../files/files.service';
 import { UserDocument } from '../users/schemas/user.schema';
 import { UsersService } from '../users/users.service';
 import { isTerminal } from '../workflow/workflow.rules';
@@ -23,7 +26,7 @@ import { CreateThesisDto } from './dto/create-thesis.dto';
 import { QueryThesesDto } from './dto/query-theses.dto';
 import { UpdateThesisDto } from './dto/update-thesis.dto';
 import { Thesis, ThesisDocument } from './schemas/thesis.schema';
-import { canReadThesis } from './thesis-access.policy';
+import { canReadThesis, canWriteThesis } from './thesis-access.policy';
 import { ThesisCodeService } from './thesis-code';
 
 const SORT_FIELDS: SortFields = {
@@ -71,6 +74,7 @@ export class ThesesService {
     private readonly catalogs: CatalogsService,
     private readonly users: UsersService,
     private readonly codes: ThesisCodeService,
+    private readonly files: FilesService,
   ) {}
 
   /** RF-C01 radicación. `seedTag` is only set by the seed command (stage 8). */
@@ -252,5 +256,74 @@ export class ThesesService {
     if (conflictIds.some((id) => !byId.has(id)))
       throw invalidRef('conflictOfInterestUserIds');
     return student;
+  }
+
+  /** New manuscript version (PDF). Coordinator or the owner student; not on closed theses. */
+  async addManuscript(
+    id: string,
+    file: UploadInput | undefined,
+    user: AuthUser,
+  ): Promise<ThesisDocument> {
+    const thesis = await this.findById(id);
+    // 404 (not 403) so thesis ids cannot be probed by users without write access.
+    if (!canWriteThesis(user, thesis)) throw thesisNotFound();
+    if (isTerminal(thesis.status)) {
+      throw new AppException(
+        ErrorCode.THESIS_CLOSED,
+        HttpStatus.CONFLICT,
+        'Thesis is closed',
+      );
+    }
+    const stored = await this.files.upload(
+      file,
+      { ownerId: user.id, thesisId: id, kind: FileKind.MANUSCRIPT },
+      ['pdf'],
+    );
+    const fileId = new Types.ObjectId(stored.id);
+    // Optimistic on manuscriptSeq: a concurrent upload makes this miss instead of duplicating a version.
+    const updated = await this.model
+      .findOneAndUpdate(
+        { _id: thesis._id, manuscriptSeq: thesis.manuscriptSeq },
+        {
+          $inc: { manuscriptSeq: 1 },
+          $push: {
+            manuscripts: {
+              fileId,
+              version: thesis.manuscriptSeq + 1,
+              fileName: stored.fileName,
+              uploadedAt: new Date(),
+              uploadedBy: new Types.ObjectId(user.id),
+            },
+          },
+          $set: { currentManuscriptId: fileId },
+        },
+        { new: true, runValidators: true },
+      )
+      .exec();
+    if (!updated) {
+      await this.files.delete(stored.id);
+      throw new AppException(
+        ErrorCode.CONFLICT,
+        HttpStatus.CONFLICT,
+        'Another manuscript was uploaded concurrently',
+      );
+    }
+    return updated;
+  }
+
+  async openManuscript(
+    id: string,
+    fileId: string,
+    user: AuthUser,
+  ): Promise<{ info: GridFile; stream: Readable }> {
+    const thesis = await this.findReadable(id, user);
+    if (!thesis.manuscripts.some((m) => m.fileId.equals(fileId))) {
+      throw new AppException(
+        ErrorCode.FILE_NOT_FOUND,
+        HttpStatus.NOT_FOUND,
+        'File not found',
+      );
+    }
+    return this.files.openDownload(fileId);
   }
 }
