@@ -2,7 +2,7 @@ import { HttpStatus, Injectable } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectModel } from '@nestjs/mongoose';
 import { ErrorCode, THESIS_PROGRESS, ThesisStatus } from '@thesis/shared';
-import { isValidObjectId, Model, Types } from 'mongoose';
+import { isObjectIdOrHexString, Model, Types } from 'mongoose';
 import { AppException } from '../common/errors/app.exception';
 import { Actor } from '../common/types/actor';
 import {
@@ -39,7 +39,19 @@ export class WorkflowService {
   ) {}
 
   async transition(input: TransitionInput): Promise<ThesisDocument> {
-    const current = isValidObjectId(input.thesisId)
+    const evidenceFileIds = input.evidenceFileIds ?? [];
+    if (
+      (input.actor.id && !isObjectIdOrHexString(input.actor.id)) ||
+      !evidenceFileIds.every((id) => isObjectIdOrHexString(id))
+    ) {
+      throw new AppException(
+        ErrorCode.VALIDATION_FAILED,
+        HttpStatus.BAD_REQUEST,
+        'Invalid id',
+      );
+    }
+
+    const current = isObjectIdOrHexString(input.thesisId)
       ? await this.theses.findById(input.thesisId, 'status').exec()
       : null;
     if (!current) {
@@ -57,18 +69,6 @@ export class WorkflowService {
         HttpStatus.CONFLICT,
         `Cannot move thesis from ${from} to ${input.to}`,
         { from, to: input.to },
-      );
-    }
-
-    const evidenceFileIds = input.evidenceFileIds ?? [];
-    if (
-      (input.actor.id && !isValidObjectId(input.actor.id)) ||
-      !evidenceFileIds.every((id) => isValidObjectId(id))
-    ) {
-      throw new AppException(
-        ErrorCode.VALIDATION_FAILED,
-        HttpStatus.BAD_REQUEST,
-        'Invalid id',
       );
     }
 

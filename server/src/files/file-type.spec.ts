@@ -26,6 +26,11 @@ describe('detectFileType', () => {
     ).toBe('docx');
   });
 
+  it('rejects ZIPs with only unrelated word-like paths', () => {
+    expect(detectFileType(zip('password/x.txt'))).toBeNull();
+    expect(detectFileType(zip('word/document.xml'))).toBeNull();
+  });
+
   it('rejects other ZIPs, text, empty and short buffers', () => {
     expect(detectFileType(zip('xl/workbook.xml'))).toBeNull();
     expect(detectFileType(Buffer.from('hello'))).toBeNull();

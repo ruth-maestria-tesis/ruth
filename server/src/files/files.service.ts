@@ -1,7 +1,7 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { InjectConnection } from '@nestjs/mongoose';
 import { ErrorCode, FileKind } from '@thesis/shared';
-import { Connection, isValidObjectId, mongo, Types } from 'mongoose';
+import { Connection, isObjectIdOrHexString, mongo, Types } from 'mongoose';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { AppException } from '../common/errors/app.exception';
@@ -59,6 +59,16 @@ export class FilesService {
     meta: { ownerId: string; thesisId?: string; kind: FileKind },
     allowed: readonly AllowedFileType[],
   ): Promise<StoredFile> {
+    if (
+      !isObjectIdOrHexString(meta.ownerId) ||
+      (meta.thesisId !== undefined && !isObjectIdOrHexString(meta.thesisId))
+    ) {
+      throw new AppException(
+        ErrorCode.VALIDATION_FAILED,
+        HttpStatus.BAD_REQUEST,
+        'Invalid id',
+      );
+    }
     if (!file?.buffer?.length) {
       throw new AppException(
         ErrorCode.FILE_REQUIRED,
@@ -92,10 +102,16 @@ export class FilesService {
       mimeType: MIME_TYPES[type],
       sha256: sha256(file.buffer),
     };
-    await pipeline(
-      Readable.from(file.buffer),
-      this.bucket.openUploadStreamWithId(id, fileName, { metadata }),
-    );
+    try {
+      await pipeline(
+        Readable.from(file.buffer),
+        this.bucket.openUploadStreamWithId(id, fileName, { metadata }),
+      );
+    } catch (err) {
+      // Best-effort cleanup of any partial chunks before surfacing the failure.
+      await this.bucket.delete(id).catch(() => undefined);
+      throw err;
+    }
     return {
       id: id.toHexString(),
       fileName,
@@ -107,7 +123,7 @@ export class FilesService {
   }
 
   async findInfo(id: string): Promise<GridFile | null> {
-    if (!isValidObjectId(id)) return null;
+    if (!isObjectIdOrHexString(id)) return null;
     return (await this.bucket
       .find({ _id: new Types.ObjectId(id) })
       .next()) as GridFile | null;
@@ -130,6 +146,11 @@ export class FilesService {
   /** Idempotent: deleting a missing file is a no-op (used for upload rollbacks). */
   async delete(id: string): Promise<void> {
     if (!(await this.findInfo(id))) return;
-    await this.bucket.delete(new Types.ObjectId(id));
+    try {
+      await this.bucket.delete(new Types.ObjectId(id));
+    } catch (err) {
+      // A concurrent delete may win the race; only swallow if the file is really gone.
+      if (await this.findInfo(id)) throw err;
+    }
   }
 }

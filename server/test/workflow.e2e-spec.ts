@@ -67,10 +67,12 @@ describe('WorkflowService (e2e)', () => {
     const emitter = app.get(EventEmitter2);
     const listener = (e: ThesisStatusChangedEvent) => events.push(e);
     emitter.on(THESIS_STATUS_CHANGED, listener);
+    const evidence = new Types.ObjectId().toHexString();
     await workflow.transition({
       thesisId: t.id as string,
       to: S.JURORS_ASSIGNED,
       actor,
+      evidenceFileIds: [evidence],
     });
     emitter.off(THESIS_STATUS_CHANGED, listener);
     expect(events).toEqual([
@@ -79,6 +81,7 @@ describe('WorkflowService (e2e)', () => {
         from: S.SUBMITTED,
         to: S.JURORS_ASSIGNED,
         actorRole: Role.COORDINATOR,
+        evidenceFileIds: [evidence],
       }),
     ]);
   });
@@ -151,6 +154,18 @@ describe('WorkflowService (e2e)', () => {
         to: S.JURORS_ASSIGNED,
         actor,
         evidenceFileIds: ['not-an-id'],
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+    expect((await theses.findById(t.id))?.status).toBe(S.SUBMITTED);
+  });
+
+  it('rejects an invalid actor id with VALIDATION_FAILED before touching the DB', async () => {
+    const t = await insertThesis(S.SUBMITTED);
+    await expect(
+      workflow.transition({
+        thesisId: t.id as string,
+        to: S.JURORS_ASSIGNED,
+        actor: { id: 'bad', role: Role.COORDINATOR },
       }),
     ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
     expect((await theses.findById(t.id))?.status).toBe(S.SUBMITTED);

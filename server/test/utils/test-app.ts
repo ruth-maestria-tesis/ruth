@@ -111,6 +111,7 @@ export const PDF_BYTES = Buffer.from('%PDF-1.4\n% test manuscript\n%%EOF\n');
 export const DOCX_BYTES = Buffer.concat([
   Buffer.from([0x50, 0x4b, 0x03, 0x04]),
   Buffer.alloc(26),
+  Buffer.from('[Content_Types].xml'),
   Buffer.from('word/document.xml'),
 ]);
 

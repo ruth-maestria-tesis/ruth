@@ -15,12 +15,14 @@ const ZIP = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
 export function detectFileType(buf: Buffer): AllowedFileType | null {
   if (buf.length >= 5 && buf.subarray(0, 5).toString('latin1') === '%PDF-')
     return 'pdf';
+  // Known limit: this accepts any OLE compound file (xls, ppt, msg...), not just Word.
   if (buf.length >= 8 && buf.subarray(0, 8).equals(OLE)) return 'doc';
-  // ZIP local headers store entry names uncompressed; docx packages have word/* entries.
+  // ZIP local headers store entry names uncompressed; a docx has both of these parts.
   if (
     buf.length >= 4 &&
     buf.subarray(0, 4).equals(ZIP) &&
-    buf.includes('word/')
+    buf.includes('[Content_Types].xml') &&
+    buf.includes('word/document.xml')
   )
     return 'docx';
   return null;

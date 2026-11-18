@@ -96,4 +96,87 @@ describe('FilesService (e2e, GridFS)', () => {
     });
     await expect(files.delete(stored.id)).resolves.toBeUndefined();
   });
+
+  const OLE_BYTES = Buffer.from([
+    0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1, 0, 0,
+  ]);
+
+  it('accepts a legacy doc where allowed with the msword MIME type', async () => {
+    const stored = await files.upload(
+      input(OLE_BYTES, 'viejo.doc'),
+      { ownerId, kind: FileKind.CORRECTION },
+      ['pdf', 'doc', 'docx'],
+    );
+    expect(stored.mimeType).toBe('application/msword');
+  });
+
+  it('stores a sanitized name for paths and non-ASCII input', async () => {
+    const stored = await files.upload(
+      input(PDF_BYTES, '../dir/Tesis versión.pdf'),
+      { ownerId, kind: FileKind.MANUSCRIPT },
+      ['pdf'],
+    );
+    expect(stored.fileName).toBe('Tesis versión.pdf');
+    const { info } = await files.openDownload(stored.id);
+    expect(info.filename).toBe('Tesis versión.pdf');
+  });
+
+  it('stores ownerId as ObjectId and thesisId when given', async () => {
+    const thesisId = new Types.ObjectId().toHexString();
+    const stored = await files.upload(
+      input(PDF_BYTES),
+      { ownerId, thesisId, kind: FileKind.MANUSCRIPT },
+      ['pdf'],
+    );
+    const { info, stream } = await files.openDownload(stored.id);
+    stream.destroy();
+    expect(info.metadata?.ownerId).toBeInstanceOf(Types.ObjectId);
+    expect(info.metadata?.ownerId.toHexString()).toBe(ownerId);
+    expect(info.metadata?.thesisId?.toHexString()).toBe(thesisId);
+  });
+
+  it('rejects invalid owner or thesis ids with VALIDATION_FAILED', async () => {
+    await expect(
+      files.upload(
+        input(PDF_BYTES),
+        { ownerId: 'nope', kind: FileKind.MANUSCRIPT },
+        ['pdf'],
+      ),
+    ).rejects.toMatchObject({ code: 'VALIDATION_FAILED', status: 400 });
+    await expect(
+      files.upload(
+        input(PDF_BYTES),
+        { ownerId, thesisId: 'nope', kind: FileKind.MANUSCRIPT },
+        ['pdf'],
+      ),
+    ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+  });
+
+  it('openDownload with a malformed id → FILE_NOT_FOUND', async () => {
+    await expect(files.openDownload('not-an-id')).rejects.toMatchObject({
+      code: 'FILE_NOT_FOUND',
+    });
+  });
+
+  it('rejects a real buffer over 25 MB with an honest size', async () => {
+    const big = Buffer.concat([
+      PDF_BYTES,
+      Buffer.alloc(MAX_FILE_BYTES - PDF_BYTES.length + 1),
+    ]);
+    await expect(
+      files.upload(input(big), { ownerId, kind: FileKind.MANUSCRIPT }, ['pdf']),
+    ).rejects.toMatchObject({ code: 'FILE_TOO_LARGE', status: 413 });
+  });
+
+  it('delete tolerates a concurrent delete', async () => {
+    const stored = await files.upload(
+      input(PDF_BYTES),
+      { ownerId, kind: FileKind.MANUSCRIPT },
+      ['pdf'],
+    );
+    await Promise.all([files.delete(stored.id), files.delete(stored.id)]);
+    await expect(files.openDownload(stored.id)).rejects.toMatchObject({
+      code: 'FILE_NOT_FOUND',
+    });
+  });
 });
