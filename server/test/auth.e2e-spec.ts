@@ -1,4 +1,5 @@
 import { INestApplication } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
 import { Role } from '@thesis/shared';
 import request, { Response } from 'supertest';
 import {
@@ -20,6 +21,12 @@ function cookiesOf(res: Response): Record<string, string> {
       return [name, value.join('=')];
     }),
   );
+}
+
+function rawCookie(res: Response, name: string): string | undefined {
+  const raw =
+    (res.headers['set-cookie'] as unknown as string[] | undefined) ?? [];
+  return raw.find((c) => c.startsWith(`${name}=`));
 }
 
 describe('Auth (e2e)', () => {
@@ -47,6 +54,24 @@ describe('Auth (e2e)', () => {
     );
     expect(header).toContain('HttpOnly');
     expect(header).toContain('Path=/api/auth');
+    for (const name of ['access_token', 'refresh_token']) {
+      const cookie = rawCookie(res, name);
+      expect(cookie).toBeDefined();
+      expect(cookie).toMatch(/;\s*HttpOnly/i);
+      expect(cookie).toMatch(/;\s*SameSite=Lax/i);
+    }
+  });
+
+  it('rejects login for a user without password hash (external juror)', async () => {
+    const juror = await createUser(app, {
+      roles: [Role.EXTERNAL_JUROR],
+      password: undefined,
+    });
+    const res = await login({
+      email: juror.email,
+      password: TEST_PASSWORD,
+    }).expect(401);
+    expect(res.body.code).toBe('AUTH_INVALID_CREDENTIALS');
   });
 
   it('rejects a wrong password with AUTH_INVALID_CREDENTIALS', async () => {
@@ -60,6 +85,11 @@ describe('Auth (e2e)', () => {
       password: TEST_PASSWORD,
     }).expect(401);
     expect(res.body.code).toBe('AUTH_INVALID_CREDENTIALS');
+  });
+
+  it('rejects an oversized password before hashing', async () => {
+    const res = await login({ email, password: 'x'.repeat(257) }).expect(400);
+    expect(res.body.code).toBe('VALIDATION_FAILED');
   });
 
   it('validates the login body', async () => {
@@ -105,6 +135,35 @@ describe('Auth (e2e)', () => {
       .expect(401);
   });
 
+  it('allows exactly one of two concurrent refreshes with the same token', async () => {
+    const server = http(app);
+    const token = cookiesOf(
+      await login({ email, password: TEST_PASSWORD }).expect(200),
+    ).refresh_token;
+
+    const results = await Promise.all(
+      [0, 1].map(() =>
+        request(server)
+          .post('/api/auth/refresh')
+          .set('Cookie', `refresh_token=${token}`),
+      ),
+    );
+    const statuses = results.map((r) => r.status).sort();
+    expect(statuses).toEqual([200, 401]);
+    const winner = results.find((r) => r.status === 200)!;
+    const loser = results.find((r) => r.status === 401)!;
+    expect(loser.body.code).toBe('AUTH_REFRESH_INVALID');
+
+    // The losing call is treated as reuse: the whole family, including the winner's new token, is revoked.
+    const issued = cookiesOf(winner).refresh_token;
+    expect(issued).toBeTruthy();
+    const replay = await request(server)
+      .post('/api/auth/refresh')
+      .set('Cookie', `refresh_token=${issued}`)
+      .expect(401);
+    expect(replay.body.code).toBe('AUTH_REFRESH_INVALID');
+  });
+
   it('rejects refresh without cookie', async () => {
     const res = await request(http(app)).post('/api/auth/refresh').expect(401);
     expect(res.body.code).toBe('AUTH_REFRESH_INVALID');
@@ -115,6 +174,48 @@ describe('Auth (e2e)', () => {
     await agent.post('/api/auth/logout').expect(204);
     await agent.get('/api/auth/me').expect(401);
     await agent.post('/api/auth/refresh').expect(401);
+  });
+
+  it('logout revokes the refresh token server-side', async () => {
+    const server = http(app);
+    const loginRes = await login({ email, password: TEST_PASSWORD }).expect(
+      200,
+    );
+    const token = cookiesOf(loginRes).refresh_token;
+    expect(token).toBeTruthy();
+
+    await request(server)
+      .post('/api/auth/logout')
+      .set('Cookie', `refresh_token=${token}`)
+      .expect(204);
+
+    // Replaying the captured cookie proves the session was revoked, not just dropped by the client.
+    const replay = await request(server)
+      .post('/api/auth/refresh')
+      .set('Cookie', `refresh_token=${token}`)
+      .expect(401);
+    expect(replay.body.code).toBe('AUTH_REFRESH_INVALID');
+  });
+
+  it('logout ignores a forged refresh token', async () => {
+    const server = http(app);
+    const token = cookiesOf(
+      await login({ email, password: TEST_PASSWORD }).expect(200),
+    ).refresh_token;
+    const jwt = app.get(JwtService);
+    const forged = await jwt.signAsync(jwt.decode<object>(token), {
+      secret: 'not-the-refresh-secret-0123456789abcdef',
+    });
+
+    await request(server)
+      .post('/api/auth/logout')
+      .set('Cookie', `refresh_token=${forged}`)
+      .expect(204);
+    // The forged cookie carried the real family id but must not have revoked it.
+    await request(server)
+      .post('/api/auth/refresh')
+      .set('Cookie', `refresh_token=${token}`)
+      .expect(200);
   });
 
   it('changes the password and revokes refresh tokens', async () => {
