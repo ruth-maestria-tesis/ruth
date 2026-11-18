@@ -8,6 +8,7 @@ import {
   IsString,
   MaxLength,
 } from 'class-validator';
+import { lowercaseIdentifier } from '../../common/validation/lowercase-identifier';
 
 export class CreateThesisDto {
   @IsString()
@@ -24,6 +25,7 @@ export class CreateThesisDto {
   @IsArray()
   @ArrayMaxSize(10)
   @IsString({ each: true })
+  @IsNotEmpty({ each: true })
   @MaxLength(60, { each: true })
   keywords?: string[];
 
@@ -36,7 +38,7 @@ export class CreateThesisDto {
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(3)
-  @ArrayUnique()
+  @ArrayUnique(lowercaseIdentifier)
   @IsMongoId({ each: true })
   coAdvisorIds?: string[];
 
@@ -52,7 +54,7 @@ export class CreateThesisDto {
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(20)
-  @ArrayUnique()
+  @ArrayUnique(lowercaseIdentifier)
   @IsMongoId({ each: true })
   conflictOfInterestUserIds?: string[];
 }

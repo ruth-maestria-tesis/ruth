@@ -17,6 +17,7 @@ import { paginate, SortFields } from '../common/pagination/paginate';
 import { Paginated } from '../common/pagination/pagination.dto';
 import type { Actor } from '../common/types/actor';
 import type { AuthUser } from '../common/types/auth-user';
+import { accentInsensitiveRegex } from '../common/utils/accent-insensitive-regex';
 import { escapeRegex } from '../common/utils/escape-regex';
 import { FilesService, GridFile, UploadInput } from '../files/files.service';
 import { UserDocument } from '../users/schemas/user.schema';
@@ -63,6 +64,10 @@ const thesisNotFound = () =>
     HttpStatus.NOT_FOUND,
     'Thesis not found',
   );
+
+/** Only keys that were actually sent; `undefined` must never reach `$set`. */
+const definedFields = (dto: UpdateThesisDto): Partial<UpdateThesisDto> =>
+  Object.fromEntries(Object.entries(dto).filter(([, v]) => v !== undefined));
 
 const isFaculty = (u?: UserDocument) =>
   !!u && u.isActive && u.roles.some((r) => JUROR_ROLES.includes(r));
@@ -141,16 +146,20 @@ export class ThesesService {
     if (query.cohortId) filter.cohortId = query.cohortId;
     if (query.status) filter.status = query.status;
     if (query.seedTag) filter.seedTag = query.seedTag;
+    // Codes are uppercase, so an anchored case-sensitive prefix can use the code index.
     if (query.codePrefix)
-      filter.code = new RegExp(`^${escapeRegex(query.codePrefix)}`, 'i');
+      filter.code = new RegExp(
+        `^${escapeRegex(query.codePrefix.toUpperCase())}`,
+      );
     if (query.q) {
-      const rx = new RegExp(escapeRegex(query.q), 'i');
+      const rx = accentInsensitiveRegex(query.q);
       filter.$or = [{ code: rx }, { title: rx }, { studentName: rx }];
     }
     return paginate(this.model, filter, query, {
       sortFields: SORT_FIELDS,
       defaultSort: 'createdAt',
       projection: { history: 0 },
+      collation: { locale: 'es', strength: 1 },
     });
   }
 
@@ -207,7 +216,7 @@ export class ThesesService {
     const updated = await this.model
       .findOneAndUpdate(
         { _id: thesis._id, status: thesis.status },
-        { $set: dto },
+        { $set: definedFields(dto) },
         { new: true, runValidators: true },
       )
       .exec();

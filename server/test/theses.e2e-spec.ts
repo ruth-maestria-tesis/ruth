@@ -162,6 +162,49 @@ describe('Theses (e2e)', () => {
       expect(res.body.code).toBe('COHORT_PROGRAM_MISMATCH');
     });
 
+    it('accepts an uppercase-hex studentId', async () => {
+      const s = await newStudent();
+      await coordinator
+        .post('/api/theses')
+        .send(body((s.id as string).toUpperCase()))
+        .expect(201);
+    });
+
+    it('rejects an invalid conflictOfInterestUserIds entry with its field', async () => {
+      const s = await newStudent();
+      const res = await coordinator
+        .post('/api/theses')
+        .send(
+          body(s.id as string, {
+            conflictOfInterestUserIds: ['65a1b2c3d4e5f60718293a4b'],
+          }),
+        )
+        .expect(400);
+      expect(res.body.details).toEqual({ field: 'conflictOfInterestUserIds' });
+    });
+
+    it('rejects ids repeated with different hex case and empty keywords', async () => {
+      const s = await newStudent();
+      const j = (await createUser(app, { roles: [Role.INTERNAL_JUROR] }))
+        .id as string;
+      await coordinator
+        .post('/api/theses')
+        .send(body(s.id as string, { coAdvisorIds: [j, j.toUpperCase()] }))
+        .expect(400);
+      await coordinator
+        .post('/api/theses')
+        .send(body(s.id as string, { keywords: ['ok', ''] }))
+        .expect(400);
+    });
+
+    it('non-string array entries are a 400, not a crash', async () => {
+      const s = await newStudent();
+      await coordinator
+        .post('/api/theses')
+        .send(body(s.id as string, { coAdvisorIds: [1, null] }))
+        .expect(400);
+    });
+
     it('rejects unknown catalog ids with THESIS_INVALID_REFERENCE', async () => {
       const s = await newStudent();
       const res = await coordinator
@@ -234,6 +277,83 @@ describe('Theses (e2e)', () => {
     });
   });
 
+  describe('GET /theses (Spanish-aware search and ordering)', () => {
+    let c2: CatalogFixture;
+
+    beforeAll(async () => {
+      c2 = await createCatalog(app, { programCode: 'ESPA', year: 2032 });
+      for (const [first, last] of [
+        ['Álvaro', 'Zea'],
+        ['beatriz', 'Ruiz'],
+        ['Carlos', 'Díaz'],
+        ['Ramón', 'Pérez'],
+      ]) {
+        const s = await newStudent(first, last);
+        await createThesis(app, c2, { studentId: s.id as string });
+      }
+    });
+
+    const names = (res: { body: { items: { studentName: string }[] } }) =>
+      res.body.items.map((t) => t.studentName);
+
+    it('sorts by student ignoring case and accents', async () => {
+      const res = await coordinator
+        .get(
+          `/api/theses?programId=${c2.programId}&sort=student&order=asc&q=${encodeURIComponent('zea')}`,
+        )
+        .expect(200);
+      expect(names(res)).toEqual(['Álvaro Zea']);
+      const all = await coordinator
+        .get(`/api/theses?programId=${c2.programId}&sort=student&order=asc`)
+        .expect(200);
+      expect(names(all).slice(0, 3)).toEqual([
+        'Álvaro Zea',
+        'beatriz Ruiz',
+        'Carlos Díaz',
+      ]);
+    });
+
+    it.each(['perez', 'PÉREZ', 'pérez'])(
+      'q=%s matches "Pérez" regardless of accents and case',
+      async (q) => {
+        const res = await coordinator
+          .get(
+            `/api/theses?programId=${c2.programId}&q=${encodeURIComponent(q)}`,
+          )
+          .expect(200);
+        expect(names(res)).toEqual(['Ramón Pérez']);
+      },
+    );
+
+    it('q=ramon matches "Ramón" (n/ñ and vowels folded)', async () => {
+      const res = await coordinator
+        .get(`/api/theses?programId=${c2.programId}&q=ramon`)
+        .expect(200);
+      expect(names(res)).toEqual(['Ramón Pérez']);
+    });
+
+    it('codePrefix is case-insensitive through uppercasing', async () => {
+      const res = await coordinator
+        .get('/api/theses?codePrefix=espa-2032')
+        .expect(200);
+      expect(res.body.total).toBe(4);
+    });
+
+    it('filters by status', async () => {
+      const c3 = await createCatalog(app, { programCode: 'STAT', year: 2033 });
+      const t = await createThesis(app, c3);
+      await createThesis(app, c3);
+      await t.updateOne({ status: ThesisStatus.UNDER_EVALUATION });
+      const res = await coordinator
+        .get(
+          `/api/theses?programId=${c3.programId}&status=${ThesisStatus.UNDER_EVALUATION}`,
+        )
+        .expect(200);
+      expect(res.body.total).toBe(1);
+      expect(res.body.items[0].id).toBe(t.id);
+    });
+  });
+
   describe('GET /theses/mine, GET /theses/:id', () => {
     it('student sees only their own thesis; others get 404', async () => {
       const owner = await newStudent();
@@ -277,6 +397,20 @@ describe('Theses (e2e)', () => {
         .patch(`/api/theses/${t.id as string}`)
         .send({ title: null })
         .expect(400);
+    });
+
+    it('a title-only PATCH keeps the abstract and keywords', async () => {
+      const t = await createThesis(app, catalog);
+      await t.updateOne({ abstract: 'Resumen original', keywords: ['k'] });
+      const res = await coordinator
+        .patch(`/api/theses/${t.id as string}`)
+        .send({ title: 'Solo título' })
+        .expect(200);
+      expect(res.body).toMatchObject({
+        title: 'Solo título',
+        abstract: 'Resumen original',
+        keywords: ['k'],
+      });
     });
 
     it('participants can change only while SUBMITTED; closed theses are locked', async () => {

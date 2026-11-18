@@ -7,6 +7,7 @@ import {
   IsString,
   MaxLength,
 } from 'class-validator';
+import { lowercaseIdentifier } from '../../common/validation/lowercase-identifier';
 import { IsOptionalNonNull } from '../../common/validation/is-optional-non-null';
 
 /** Student, program, cohort and period are fixed at registration (they define the code). */
@@ -26,6 +27,7 @@ export class UpdateThesisDto {
   @IsArray()
   @ArrayMaxSize(10)
   @IsString({ each: true })
+  @IsNotEmpty({ each: true })
   @MaxLength(60, { each: true })
   keywords?: string[];
 
@@ -36,14 +38,14 @@ export class UpdateThesisDto {
   @IsOptionalNonNull()
   @IsArray()
   @ArrayMaxSize(3)
-  @ArrayUnique()
+  @ArrayUnique(lowercaseIdentifier)
   @IsMongoId({ each: true })
   coAdvisorIds?: string[];
 
   @IsOptionalNonNull()
   @IsArray()
   @ArrayMaxSize(20)
-  @ArrayUnique()
+  @ArrayUnique(lowercaseIdentifier)
   @IsMongoId({ each: true })
   conflictOfInterestUserIds?: string[];
 }

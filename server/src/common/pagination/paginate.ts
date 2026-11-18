@@ -3,6 +3,7 @@ import type {
   HydratedDocument,
   Model,
   ProjectionType,
+  mongo,
   SortOrder,
 } from 'mongoose';
 import { Paginated, PaginationQueryDto } from './pagination.dto';
@@ -32,17 +33,21 @@ export async function paginate<T>(
     sortFields: SortFields;
     defaultSort: string;
     projection?: ProjectionType<T>;
+    /** e.g. `{ locale: 'es', strength: 1 }` for accent/case-insensitive ordering. */
+    collation?: mongo.CollationOptions;
   },
 ): Promise<Paginated<HydratedDocument<T>>> {
-  const [items, total] = await Promise.all([
-    model
-      .find(filter, options.projection)
-      .sort(buildSort(query, options.sortFields, options.defaultSort))
-      .skip((query.page - 1) * query.limit)
-      .limit(query.limit)
-      .exec(),
-    model.countDocuments(filter).exec(),
-  ]);
+  const find = model
+    .find(filter, options.projection)
+    .sort(buildSort(query, options.sortFields, options.defaultSort))
+    .skip((query.page - 1) * query.limit)
+    .limit(query.limit);
+  const count = model.countDocuments(filter);
+  if (options.collation) {
+    find.collation(options.collation);
+    count.collation(options.collation);
+  }
+  const [items, total] = await Promise.all([find.exec(), count.exec()]);
   return {
     items: items as HydratedDocument<T>[],
     total,
