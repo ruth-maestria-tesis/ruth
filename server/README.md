@@ -82,3 +82,15 @@ Programa MIETIA, periodos 2025-II y 2026-I, dos cohortes y 15 tesis (`DEMO-MIETI
 
 - `GET /api/reports/theses.xlsx`, `GET /api/reports/theses.pdf` y `GET /api/reports/summary` (COORDINATOR, ADMIN): usan los mismos filtros que `GET /api/theses` (sin paginación, máximo 2000 filas). Excel con `exceljs` y PDF con `pdfkit` (A4 horizontal). Ver sección 11 del contrato de la API.
 - `GET /api/audit-logs` (ADMIN, COORDINATOR): bitácora de solo inserción (`auditLogs`). Un interceptor global registra toda petición POST/PUT/PATCH/DELETE exitosa de un usuario autenticado, más inicio de sesión (éxito y fallo) y cierre de sesión. Nunca guarda cuerpos de petición, solo campos permitidos en `meta`. Ver sección 12.
+
+## Tareas programadas y alertas
+
+- `expirePending` corre cada hora (vence asignaciones `PENDING` y reconcilia RN-08). Las alertas corren a diario a las 07:00 America/Bogota. Todo está desactivado con `NODE_ENV=test`.
+- Trabajos de alerta (idempotentes; cada uno marca lo ya enviado):
+  - `overdueEvaluations`: concepto vencido, avisa al jurado y a los coordinadores (`overdueNotifiedAt`; se repite cada `overdueRenotifyBusinessDays` días hábiles, 0 = una vez).
+  - `deadlineReminders`: recordatorio al jurado cuando faltan `reminderBusinessDaysBefore` días hábiles o menos para responder o evaluar (`responseReminderSentAt`, `evaluationReminderSentAt`).
+  - `unseenConceptAlerts`: el estudiante no vio ni descargó el concepto tras `unseenConceptAlertDays` días hábiles; avisa a los coordinadores (`unseenAlertSentAt`).
+- Ajustes en `PATCH /api/settings`: `reminderBusinessDaysBefore` (2), `overdueRenotifyBusinessDays` (5), `unseenConceptAlertDays` (3).
+- Ejecución manual para la demo (ADMIN): `POST /api/admin/jobs/run` con `{ "job": "all" }` (o `expirePending`, `reconcile`, `overdueEvaluations`, `deadlineReminders`, `unseenConceptAlerts`); responde los conteos por trabajo.
+- Detalle en `docs/superpowers/specs/2026-11-19-mvp-api-contracts.md` §13.
+

@@ -208,9 +208,16 @@ export class AssignmentResponsesService {
         false,
       );
     }
-    await this.reconcileAcceptedJuries();
-    await this.reconcileEmptySlots();
+    await this.reconcile();
     return expired;
+  }
+
+  /** RN-08 reconcile passes on their own. Returns how many theses were processed. */
+  async reconcile(): Promise<number> {
+    return (
+      (await this.reconcileAcceptedJuries()) +
+      (await this.reconcileEmptySlots())
+    );
   }
 
   private async assertRespondable(
@@ -325,9 +332,10 @@ export class AssignmentResponsesService {
   }
 
   /** Heals a lost advance: theses still forming a jury whose two active primaries accepted. */
-  private async reconcileAcceptedJuries(): Promise<void> {
+  private async reconcileAcceptedJuries(): Promise<number> {
     const forming = await this.theses.findIdsByStatuses(JURY_FORMING_STATUSES);
-    if (!forming.length) return;
+    if (!forming.length) return 0;
+    let done = 0;
     const rows = await this.model
       .aggregate<{ _id: Types.ObjectId }>([
         {
@@ -345,6 +353,7 @@ export class AssignmentResponsesService {
     for (const { _id: thesisId } of rows) {
       try {
         await this.advanceIfJuryAccepted(thesisId, SYSTEM_ACTOR);
+        done++;
       } catch (e) {
         this.logger.error(
           `Reconcile: thesis ${thesisId.toHexString()} could not advance to UNDER_EVALUATION`,
@@ -352,14 +361,16 @@ export class AssignmentResponsesService {
         );
       }
     }
+    return done;
   }
 
   /** Heals a lost PENDING_JUROR_REPLACEMENT: JURORS_ASSIGNED theses with < 2 active primaries. */
-  private async reconcileEmptySlots(): Promise<void> {
+  private async reconcileEmptySlots(): Promise<number> {
     const assigned = await this.theses.findIdsByStatuses([
       ThesisStatus.JURORS_ASSIGNED,
     ]);
-    if (!assigned.length) return;
+    if (!assigned.length) return 0;
+    let done = 0;
     const full = new Set(
       (
         await this.model
@@ -386,6 +397,7 @@ export class AssignmentResponsesService {
           SYSTEM_ACTOR,
           'Reconcile: a primary juror slot is empty',
         );
+        done++;
       } catch (e) {
         this.logger.error(
           `Reconcile: thesis ${thesisId.toHexString()} could not move to PENDING_JUROR_REPLACEMENT`,
@@ -393,5 +405,6 @@ export class AssignmentResponsesService {
         );
       }
     }
+    return done;
   }
 }

@@ -11,9 +11,9 @@ Base: `docs/superpowers/specs/2026-11-17-server-design.md` (§4 status machine, 
 - Domain events (`@OnEvent`) feed notifications: `assignment.*` (exists), `evaluation.submitted`, `feedback.*`, `defense.*`, `minutes.sealed`, `thesis.status.changed` (exists).
 
 ## MVP scope cuts
-- **Out:** `reports` (xlsx/pdf export), `GET /audit-logs` and the audit interceptor, the `overdueEvaluations`, `deadlineReminders` and `unseenConceptAlerts` jobs.
+- **Originally cut, now built:** `reports` (§11), `GET /audit-logs` and the audit interceptor (§12), and the `overdueEvaluations`, `deadlineReminders` and `unseenConceptAlerts` jobs (§13).
 - **Simplified:**
-  - The scheduler only runs `expirePending` every hour.
+  - The scheduler runs `expirePending` every hour (the alert jobs of §13 were added later).
   - The seed is small (1 program, 2 periods, 2 cohorts, about 20 theses across the states, known users).
   - Minutes PDF: a simple `pdfkit` page with the data and the hash.
 
@@ -262,3 +262,48 @@ AuditLog = { id, at, actorId?, actorRoles: Role[], action: string, method?, path
 - Explicit events: `AUTH_LOGIN_SUCCESS` (actor set), `AUTH_LOGIN_FAILURE` (`meta.email` = attempted e-mail, `statusCode` 401/403), `AUTH_LOGOUT`. All have `entityType: 'auth'`.
 - `meta` only holds allow-listed body fields (`to`, `verdict`, `status`, `decision`, `modality`, `type`, `isActive`, `role`, `roles`). Passwords, tokens and free text are never stored.
 - Writes are fire-and-forget (a failure is logged, never fails the request), so an entry may take a few ms to appear. The collection is insert-only: no update/delete endpoints, and the schema throws on any update or delete.
+
+## 13. Alert jobs and `POST /admin/jobs/run` (suggestions 8 and 10)
+
+Module `scheduler`. `expirePending` (which also runs the RN-08 reconcile passes) stays hourly. The three alert jobs run **daily at 07:00 America/Bogota** (`daily-alert-jobs`). All crons are disabled under `NODE_ENV=test`.
+
+Every job is idempotent and takes `now` (`AlertJobsService.<job>(now)`), so tests control the clock. A marker is claimed with a compare-and-set update *before* notifying; if notifying fails the marker is restored and the next run retries. Each item runs in its own try/catch and is logged. Business days use the Bogotá calendar and `settings.holidays`.
+
+| Job | Selects | Notifies | Marker |
+|---|---|---|---|
+| `overdueEvaluations` | Assignment `ACCEPTED`, active, `evaluationDeadline < now`, no `SUBMITTED` evaluation, thesis `UNDER_EVALUATION` or `IN_DISPUTE` | The juror and all active coordinators. Re-notifies every `overdueRenotifyBusinessDays` business days (0 = never) | `assignment.overdueNotifiedAt` (updated on each re-notification) |
+| `deadlineReminders` (response) | Assignment `PENDING`, active, `responseDeadline >= now` with at most `reminderBusinessDaysBefore` business days left, thesis not `SUBMITTED` | The juror, once | `assignment.responseReminderSentAt` |
+| `deadlineReminders` (evaluation) | Assignment `ACCEPTED`, active, `evaluationDeadline >= now` with at most `reminderBusinessDaysBefore` business days left, no `SUBMITTED` evaluation, thesis `UNDER_EVALUATION` or `IN_DISPUTE` | The juror, once | `assignment.evaluationReminderSentAt` |
+| `unseenConceptAlerts` | Evaluation `SUBMITTED` with neither `studentFirstViewedAt` nor `studentFirstDownloadedAt` (the student never opened or downloaded it, as in suggestion 10), and at least `unseenConceptAlertDays` business days since `submittedAt` | All active coordinators, once | `evaluation.unseenAlertSentAt` |
+
+The "seen" timestamps already existed (suggestion 9): `studentFirstViewedAt` is set when a STUDENT reads `GET /evaluations/:id`, `studentFirstDownloadedAt` on a correction download. Suggestion 8 (countdown column) is already served by `responseDaysRemaining` and `evaluationDaysRemaining` in `AssignmentView`.
+
+### Notification types and links
+
+| `type` | Recipients | Title | Link |
+|---|---|---|---|
+| `evaluation.overdue` | Juror | Tu concepto está vencido | `/juror/evaluation/:assignmentId` |
+| `evaluation.overdue` | Coordinators | Concepto de jurado vencido | `/coordinator/theses/:thesisId` |
+| `assignment.response.reminder` | Juror | Recordatorio: responde tu asignación | `/juror` |
+| `evaluation.deadline.reminder` | Juror | Recordatorio: plazo de evaluación | `/juror/evaluation/:assignmentId` |
+| `evaluation.unseen` | Coordinators | El estudiante no ha consultado el concepto | `/coordinator/theses/:thesisId` |
+
+`entityRef` is `{ kind: 'assignment', id }` for the first three types and `{ kind: 'evaluation', id }` for `evaluation.unseen`.
+
+### Settings (`GET|PATCH /api/settings`)
+
+| Key | Default | Range | Meaning |
+|---|---|---|---|
+| `reminderBusinessDaysBefore` | 2 | 1-10 | Reminders go out when this many business days or fewer remain |
+| `overdueRenotifyBusinessDays` | 5 | 0-60 | Business days between overdue re-notifications; 0 = once only |
+| `unseenConceptAlertDays` | 3 | 1-60 | (existing) business days before the unseen-concept alert |
+
+### `POST /api/admin/jobs/run`
+
+ADMIN only (not `@AllowScoped`; scoped external sessions cannot reach it). For the demo and the e2e tests.
+- Body: `{ job: 'expirePending' | 'reconcile' | 'overdueEvaluations' | 'deadlineReminders' | 'unseenConceptAlerts' | 'all' }`. Anything else is 400.
+- Response 200: counts per job that ran, e.g. `{ "overdueEvaluations": 2 }`, or all five keys for `all`.
+  - `expirePending`: assignments expired.
+  - `reconcile`: theses processed by the assignment and RN-08 (evaluation outcome) reconcile passes.
+  - The other three: notification batches sent (assignments or evaluations notified).
+- It runs with the real clock; jobs are idempotent, so repeating it returns 0 for what was already sent.

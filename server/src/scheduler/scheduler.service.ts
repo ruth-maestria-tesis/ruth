@@ -3,6 +3,9 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { AssignmentResponsesService } from '../assignments/assignment-responses.service';
 import { SYSTEM_ACTOR } from '../common/types/actor';
 import { EvaluationsService } from '../evaluations/evaluations.service';
+import { AlertJobsService } from './alert-jobs.service';
+
+const DISABLED = process.env.NODE_ENV === 'test';
 
 @Injectable()
 export class SchedulerService {
@@ -11,12 +14,13 @@ export class SchedulerService {
   constructor(
     private readonly responses: AssignmentResponsesService,
     private readonly evaluations: EvaluationsService,
+    private readonly alerts: AlertJobsService,
   ) {}
 
   /** Hourly: expires PENDING assignments past their response deadline, then reconciles RN-08. Off under NODE_ENV=test. */
   @Cron(CronExpression.EVERY_HOUR, {
     name: 'expire-pending-assignments',
-    disabled: process.env.NODE_ENV === 'test',
+    disabled: DISABLED,
   })
   async expirePendingAssignments(): Promise<void> {
     try {
@@ -41,6 +45,23 @@ export class SchedulerService {
         `reconcileStuck failed: ${err instanceof Error ? err.message : String(err)}`,
       );
       return 0;
+    }
+  }
+
+  /** Daily 07:00 Bogotá: overdue evaluations, deadline reminders and unseen-concept alerts. */
+  @Cron('0 7 * * *', {
+    name: 'daily-alert-jobs',
+    timeZone: 'America/Bogota',
+    disabled: DISABLED,
+  })
+  async dailyAlerts(): Promise<void> {
+    for (const job of [
+      'overdueEvaluations',
+      'deadlineReminders',
+      'unseenConceptAlerts',
+    ] as const) {
+      const counts = await this.alerts.run(job);
+      this.logger.log(`${job}: ${JSON.stringify(counts)}`);
     }
   }
 }
