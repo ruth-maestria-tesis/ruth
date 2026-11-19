@@ -1,5 +1,6 @@
 import { MinutesVerdict } from '@thesis/shared';
 import {
+  bogotaYear,
   canonicalJson,
   formatMinutesNumber,
   isGradeConsistent,
@@ -43,5 +44,12 @@ describe('minutes content', () => {
 
   it('formats the number with a 3-digit sequence', () => {
     expect(formatMinutesNumber('MIETIA', 2026, 7)).toBe('MIETIA-2026-007');
+  });
+});
+
+describe('bogotaYear', () => {
+  it('uses the Colombia calendar year, not UTC', () => {
+    expect(bogotaYear(new Date('2026-01-01T03:00:00Z'))).toBe(2025);
+    expect(bogotaYear(new Date('2026-01-01T06:00:00Z'))).toBe(2026);
   });
 });

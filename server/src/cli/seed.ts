@@ -5,7 +5,8 @@ import { normalizeSeedTag, runSeed, SeedResult } from '../seed/seed';
 
 /**
  * Usage (from the monorepo root, with server/.env providing NODE_ENV, MONGODB_URI...):
- *   pnpm --filter server seed -- --reset [--tag=DEMO]
+ *   pnpm --filter server seed -- --reset [--tag=DEMO] [--force]
+ * Refuses to run with NODE_ENV=production unless --force is passed.
  * Without --reset it refuses to run when the tagged data already exists.
  */
 function printSummary(result: SeedResult): void {
@@ -32,6 +33,7 @@ function printSummary(result: SeedResult): void {
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const reset = args.includes('--reset');
+  const force = args.includes('--force');
   const tagArg = args.find((a) => a.startsWith('--tag='));
 
   let app: INestApplicationContext | undefined;
@@ -43,6 +45,7 @@ async function main(): Promise<void> {
     const result = await runSeed(app, {
       tag,
       reset,
+      force,
       log: (msg) => console.log(msg),
     });
     printSummary(result);

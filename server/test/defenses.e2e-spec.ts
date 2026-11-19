@@ -10,6 +10,7 @@ import {
 } from '@thesis/shared';
 import { Model } from 'mongoose';
 import { DEFENSE_EVENTS } from '../src/defenses/defense.events';
+import { WorkflowService } from '../src/workflow/workflow.service';
 import { Thesis } from '../src/theses/schemas/thesis.schema';
 import {
   closeTestApp,
@@ -229,5 +230,71 @@ describe('Defenses — CU-03 (e2e)', () => {
       .post(`/api/theses/${thesis.id}/defense`)
       .send(inPerson())
       .expect(201);
+  });
+
+  it('retries the thesis transition when a confirmed defense left the thesis READY_FOR_DEFENSE', async () => {
+    const events = app.get(EventEmitter2);
+    const confirmed: unknown[] = [];
+    const onConfirmed = (e: unknown) => confirmed.push(e);
+    events.on(DEFENSE_EVENTS.CONFIRMED, onConfirmed);
+    const { thesis, jurorAgents } = await createReadyForDefenseThesis(app);
+    const created = await coordinator
+      .post(`/api/theses/${thesis.id}/defense`)
+      .send(inPerson())
+      .expect(201);
+    const id = created.body.id as string;
+    await jurorAgents[0].post(`/api/defenses/${id}/confirm`).expect(200);
+
+    const transition = jest
+      .spyOn(app.get(WorkflowService), 'transition')
+      .mockRejectedValueOnce(new Error('transition failed'));
+    await jurorAgents[1].post(`/api/defenses/${id}/confirm`).expect(500);
+    transition.mockRestore();
+    expect(await status(thesis._id)).toBe(ThesisStatus.READY_FOR_DEFENSE);
+    expect(confirmed).toHaveLength(0);
+
+    // The coordinator is not a juror, so cannot retry.
+    await coordinator.post(`/api/defenses/${id}/confirm`).expect(403);
+    const retried = await jurorAgents[0]
+      .post(`/api/defenses/${id}/confirm`)
+      .expect(200);
+    expect(retried.body.status).toBe(DefenseStatus.CONFIRMED);
+    expect(await status(thesis._id)).toBe(ThesisStatus.DEFENSE_SCHEDULED);
+    expect(confirmed).toHaveLength(1);
+    // Once the thesis moved on, confirming again is a plain conflict.
+    await jurorAgents[0].post(`/api/defenses/${id}/confirm`).expect(409);
+    events.off(DEFENSE_EVENTS.CONFIRMED, onConfirmed);
+  });
+
+  it('emits defense.updated after a PATCH and defense.cancelled after a cancel', async () => {
+    const events = app.get(EventEmitter2);
+    const seen: { name: string; payload: unknown }[] = [];
+    const listener = (name: string | string[], payload: unknown) =>
+      seen.push({ name: String(name), payload });
+    events.onAny(listener);
+    const { thesis } = await createReadyForDefenseThesis(app);
+    const created = await coordinator
+      .post(`/api/theses/${thesis.id}/defense`)
+      .send(inPerson())
+      .expect(201);
+    const id = created.body.id as string;
+    await coordinator
+      .patch(`/api/defenses/${id}`)
+      .send({ location: 'Sala 9' })
+      .expect(200);
+    await coordinator.post(`/api/defenses/${id}/cancel`).expect(200);
+    events.offAny(listener);
+    const byName = (n: string) => seen.filter((e) => e.name === n);
+    expect(byName(DEFENSE_EVENTS.UPDATED)).toEqual([
+      {
+        name: 'defense.updated',
+        payload: expect.objectContaining({
+          thesisId: thesis.id,
+          defenseId: id,
+          actor: expect.objectContaining({ role: Role.COORDINATOR }),
+        }),
+      },
+    ]);
+    expect(byName(DEFENSE_EVENTS.CANCELLED)).toHaveLength(1);
   });
 });

@@ -11,6 +11,10 @@ import {
   ThesisStatus,
 } from '@thesis/shared';
 import { Model } from 'mongoose';
+import { FilesService } from '../src/files/files.service';
+import { User } from '../src/users/schemas/user.schema';
+import { WorkflowService } from '../src/workflow/workflow.service';
+import { bogotaYear } from '../src/minutes/minutes.content';
 import { Defense } from '../src/defenses/schemas/defense.schema';
 import { MINUTES_SEALED } from '../src/minutes/minutes.events';
 import { minutesHash } from '../src/minutes/minutes.content';
@@ -271,6 +275,95 @@ describe('Minutes — CU-04 / RNF-04 (e2e)', () => {
       .expect(201);
     const seq = Number((first.body.number as string).split('-').at(-1));
     expect(seq).toBeGreaterThanOrEqual(1);
-    expect(first.body.number).toContain(`-${new Date().getFullYear()}-`);
+    expect(first.body.number).toContain(`-${bogotaYear()}-`);
+  });
+
+  /** All jurors signed; returns what the coordinator needs to sign last. */
+  async function readyToSeal() {
+    const fx = await scheduled();
+    const created = await coordinator
+      .post(`/api/theses/${fx.thesis.id}/minutes`)
+      .send(body)
+      .expect(201);
+    const id = created.body.id as string;
+    for (const agent of fx.jurorAgents)
+      await agent.post(`/api/minutes/${id}/sign`).expect(200);
+    return { ...fx, id };
+  }
+
+  it('retries sealing when the PDF step failed after the last signature', async () => {
+    const { thesis, id } = await readyToSeal();
+    const upload = jest
+      .spyOn(app.get(FilesService), 'upload')
+      .mockRejectedValueOnce(new Error('GridFS down'));
+    await coordinator.post(`/api/minutes/${id}/sign`).expect(500);
+    upload.mockRestore();
+    const stuck = await minutesModel.findById(id);
+    expect(stuck?.status).toBe(MinutesStatus.DRAFT);
+    expect(stuck?.signatures).toHaveLength(3);
+
+    const retried = await coordinator
+      .post(`/api/minutes/${id}/sign`)
+      .expect(200);
+    expect(retried.body).toMatchObject({
+      status: MinutesStatus.SEALED,
+      pdfAvailable: true,
+    });
+    expect((await theses.findById(thesis._id))?.status).toBe(
+      ThesisStatus.COMPLETED_APPROVED,
+    );
+  });
+
+  it('retries only the thesis transition when sealed but the thesis is still DEFENSE_SCHEDULED', async () => {
+    const events = app.get(EventEmitter2);
+    const sealedEvents: unknown[] = [];
+    const onSealed = (e: unknown) => sealedEvents.push(e);
+    events.on(MINUTES_SEALED, onSealed);
+
+    const { thesis, id, jurorAgents } = await readyToSeal();
+    const transition = jest
+      .spyOn(app.get(WorkflowService), 'transition')
+      .mockRejectedValueOnce(new Error('transition failed'));
+    await coordinator.post(`/api/minutes/${id}/sign`).expect(500);
+    transition.mockRestore();
+    const stuck = await minutesModel.findById(id);
+    expect(stuck?.status).toBe(MinutesStatus.SEALED);
+    expect(stuck?.pdfFileId).toBeDefined();
+    const pdfId = stuck?.pdfFileId?.toHexString();
+    expect((await theses.findById(thesis._id))?.status).toBe(
+      ThesisStatus.DEFENSE_SCHEDULED,
+    );
+    expect(sealedEvents).toHaveLength(0);
+
+    // A signer retries: no new PDF, the transition runs and the event fires once.
+    const retried = await jurorAgents[0]
+      .post(`/api/minutes/${id}/sign`)
+      .expect(200);
+    expect(retried.body.status).toBe(MinutesStatus.SEALED);
+    expect((await minutesModel.findById(id))?.pdfFileId?.toHexString()).toBe(
+      pdfId,
+    );
+    expect((await theses.findById(thesis._id))?.status).toBe(
+      ThesisStatus.COMPLETED_APPROVED,
+    );
+    expect(sealedEvents).toHaveLength(1);
+
+    // Fully done: further signs are 409 MINUTES_SEALED again.
+    const after = await coordinator.post(`/api/minutes/${id}/sign`).expect(409);
+    expect(after.body.code).toBe(ErrorCode.MINUTES_SEALED);
+    events.off(MINUTES_SEALED, onSealed);
+  });
+
+  it('refuses to create minutes when a required signer account is missing', async () => {
+    const { thesis, jurors } = await scheduled();
+    await app
+      .get<Model<User>>(getModelToken(User.name))
+      .deleteOne({ _id: jurors[0]._id });
+    const res = await coordinator
+      .post(`/api/theses/${thesis.id}/minutes`)
+      .send(body)
+      .expect(500);
+    expect(res.body.code).toBe(ErrorCode.INTERNAL_ERROR);
+    expect(await minutesModel.exists({ thesisId: thesis._id })).toBeNull();
   });
 });

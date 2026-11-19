@@ -233,12 +233,21 @@ export class DefensesService {
       )
       .exec();
     if (!updated) throw notEditable(DefenseStatus.CONFIRMED);
+    this.emit(
+      DEFENSE_EVENTS.UPDATED,
+      updated,
+      actorFrom(user, Role.COORDINATOR),
+    );
     return (await this.toViews([updated], [thesis]))[0];
   }
 
   async confirm(id: string, user: AuthUser): Promise<DefenseView> {
     const { defense, thesis } = await this.findReadable(id, user);
-    if (defense.status !== DefenseStatus.PROPOSED)
+    // Retry: the defense was confirmed but the thesis transition failed afterwards.
+    const retry =
+      defense.status === DefenseStatus.CONFIRMED &&
+      thesis.status === ThesisStatus.READY_FOR_DEFENSE;
+    if (defense.status !== DefenseStatus.PROPOSED && !retry)
       throw notEditable(defense.status);
     const jurors = await this.activeJurors(thesis._id);
     if (!jurorFor(jurors, user)) {
@@ -247,6 +256,10 @@ export class DefensesService {
         HttpStatus.FORBIDDEN,
         'Only an active juror of the thesis can confirm',
       );
+    }
+    if (retry) {
+      await this.completeConfirmation(defense, thesis, user);
+      return (await this.toViews([defense], [thesis]))[0];
     }
     const userId = new Types.ObjectId(user.id);
     await this.model
@@ -276,18 +289,27 @@ export class DefensesService {
         .exec();
       if (won) {
         current = won;
-        const actor = actorFrom(user, Role.INTERNAL_JUROR, Role.EXTERNAL_JUROR);
-        await this.workflow.transition({
-          thesisId: thesis.id as string,
-          to: ThesisStatus.DEFENSE_SCHEDULED,
-          expectedFrom: [ThesisStatus.READY_FOR_DEFENSE],
-          actor,
-          reason: 'All jurors confirmed the defense',
-        });
-        this.emit(DEFENSE_EVENTS.CONFIRMED, current, actor);
+        await this.completeConfirmation(current, thesis, user);
       }
     }
     return (await this.toViews([current], [thesis]))[0];
+  }
+
+  /** Moves the thesis to DEFENSE_SCHEDULED, then announces the confirmation. Safe to retry. */
+  private async completeConfirmation(
+    defense: DefenseDocument,
+    thesis: ThesisDocument,
+    user: AuthUser,
+  ): Promise<void> {
+    const actor = actorFrom(user, Role.INTERNAL_JUROR, Role.EXTERNAL_JUROR);
+    await this.workflow.transition({
+      thesisId: thesis.id as string,
+      to: ThesisStatus.DEFENSE_SCHEDULED,
+      expectedFrom: [ThesisStatus.READY_FOR_DEFENSE],
+      actor,
+      reason: 'All jurors confirmed the defense',
+    });
+    this.emit(DEFENSE_EVENTS.CONFIRMED, defense, actor);
   }
 
   async cancel(id: string, user: AuthUser): Promise<DefenseView> {

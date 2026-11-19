@@ -2,6 +2,7 @@ import type { Actor } from '../common/types/actor';
 
 export const DEFENSE_EVENTS = {
   PROPOSED: 'defense.proposed',
+  UPDATED: 'defense.updated',
   CONFIRMED: 'defense.confirmed',
   CANCELLED: 'defense.cancelled',
 } as const;

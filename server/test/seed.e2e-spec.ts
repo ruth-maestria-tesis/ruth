@@ -14,6 +14,8 @@ import { FeedbackItem } from '../src/feedback/schemas/feedback-item.schema';
 import { Minutes } from '../src/minutes/schemas/minutes.schema';
 import { Notification } from '../src/notifications/schemas/notification.schema';
 import { normalizeSeedTag, resetSeed, runSeed } from '../src/seed/seed';
+import { Defense } from '../src/defenses/schemas/defense.schema';
+import { MinutesService } from '../src/minutes/minutes.service';
 import { Counter } from '../src/theses/schemas/counter.schema';
 import { Thesis } from '../src/theses/schemas/thesis.schema';
 import { User } from '../src/users/schemas/user.schema';
@@ -31,8 +33,6 @@ const TAGGED_COLLECTIONS = [
   'defenses',
   'minutes',
   'notifications',
-  'programs',
-  'periods',
   'cohorts',
 ];
 
@@ -109,6 +109,16 @@ describe('Seed (e2e, in-memory Mongo)', () => {
       .exec();
     expect(sealed.length).toBeGreaterThanOrEqual(2);
     expect(sealed.every((x) => x.pdfFileId)).toBe(true);
+    // Demo minutes never use the official numbering and the defense predates the seal.
+    const defensesModel: Model<Defense> = app.get(getModelToken(Defense.name));
+    for (const x of sealed) {
+      expect(x.number).toMatch(/^DEMO-MIETIA-\d{4}-\d{3}$/);
+      const d = (await defensesModel.findById(x.defenseId))!;
+      expect(d.scheduledAt.getTime()).toBeLessThan(x.sealedAt!.getTime());
+    }
+    const counterDocs = await db.collection('counters').find().toArray();
+    for (const c of counterDocs.filter((c) => /^minutes:/.test(String(c._id))))
+      expect(String(c._id)).toMatch(/^minutes:DEMO-/);
 
     // jurado1: one PENDING assignment and one ACCEPTED with a draft evaluation.
     const users: Model<User> = app.get(getModelToken(User.name));
@@ -147,6 +157,24 @@ describe('Seed (e2e, in-memory Mongo)', () => {
     // Without --reset a second run refuses; with it, it rebuilds the same dataset.
     await expect(runSeed(app)).rejects.toThrow(/--reset/);
 
+    // A reset keeps a seeded thesis (and what it references) while untagged documents use it.
+    const target = seeded[0];
+    const assignmentsRaw = db.collection('assignments');
+    const outsideAssignment = await assignmentsRaw.insertOne({
+      thesisId: target._id,
+      jurorId: target.advisorId,
+      seedTag: undefined,
+    });
+    await resetSeed(app);
+    expect(await theses.exists({ _id: target._id })).toBeTruthy();
+    expect(await users.exists({ _id: target.studentId })).toBeTruthy();
+    expect(
+      await db.collection('cohorts').countDocuments({ _id: target.cohortId }),
+    ).toBe(1);
+    expect(await theses.countDocuments({ seedTag: 'DEMO' })).toBe(1);
+    await assignmentsRaw.deleteOne({ _id: outsideAssignment.insertedId });
+    await resetSeed(app);
+
     // Untagged data survives a reset.
     const outsider = await users.create({
       email: 'real.user@unicordoba.edu.co',
@@ -166,6 +194,14 @@ describe('Seed (e2e, in-memory Mongo)', () => {
     const counters: Model<Counter> = app.get(getModelToken(Counter.name));
     expect(await counters.countDocuments()).toBe(0);
     expect(await db.collection('files.chunks').countDocuments()).toBe(0);
+    // The shared catalogs are never tagged and never deleted.
+    expect(await db.collection('programs').countDocuments()).toBe(1);
+    expect(await db.collection('periods').countDocuments()).toBe(2);
+    expect(
+      await db
+        .collection('programs')
+        .countDocuments({ seedTag: { $exists: true } }),
+    ).toBe(0);
 
     // Idempotent: seeding again after a reset works.
     const again = await runSeed(app, { reset: true });
@@ -173,5 +209,35 @@ describe('Seed (e2e, in-memory Mongo)', () => {
     expect(again.theses.map((t) => t.code)).toEqual(
       result.theses.map((t) => t.code),
     );
+  });
+
+  it('a seed that fails partway can still be fully removed with --reset', async () => {
+    await resetSeed(app);
+    const spy = jest
+      .spyOn(app.get(MinutesService), 'create')
+      .mockRejectedValueOnce(new Error('boom'));
+    await expect(runSeed(app)).rejects.toThrow('boom');
+    spy.mockRestore();
+    const partial = await tagged('DEMO');
+    expect(partial.users).toBeGreaterThan(0);
+    expect(partial.theses).toBeGreaterThan(0);
+    expect(partial.assignments).toBeGreaterThan(0);
+    expect(partial.files).toBeGreaterThan(0);
+    await resetSeed(app);
+    const after = await tagged('DEMO');
+    for (const c of Object.keys(after)) expect(after[c]).toBe(0);
+    expect(
+      await db.collection('users').countDocuments({ seedTag: 'DEMO' }),
+    ).toBe(0);
+  });
+
+  it('refuses to run in production unless forced', async () => {
+    const previous = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    try {
+      await expect(runSeed(app, { reset: true })).rejects.toThrow(/--force/);
+    } finally {
+      process.env.NODE_ENV = previous;
+    }
   });
 });
