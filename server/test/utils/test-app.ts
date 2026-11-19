@@ -10,12 +10,13 @@ import {
   ProgramLevel,
   Role,
 } from '@thesis/shared';
-import type { Connection } from 'mongoose';
+import { Types, type Connection } from 'mongoose';
 import { randomUUID } from 'node:crypto';
 import request from 'supertest';
 import type { App } from 'supertest/types';
 import { AppModule } from '../../src/app.module';
 import { configureApp } from '../../src/app.setup';
+import { AssignmentsService } from '../../src/assignments/assignments.service';
 import { CatalogsService } from '../../src/catalogs/catalogs.service';
 import { ThesisDocument } from '../../src/theses/schemas/thesis.schema';
 import { ThesesService } from '../../src/theses/theses.service';
@@ -179,6 +180,48 @@ export const DOCX_BYTES = Buffer.concat([
   Buffer.from('[Content_Types].xml'),
   Buffer.from('word/document.xml'),
 ]);
+
+/** Acting coordinator for fixtures that go through services directly. */
+const FIXTURE_COORDINATOR = {
+  id: new Types.ObjectId().toHexString(),
+  email: 'coord@test.edu.co',
+  roles: [Role.COORDINATOR],
+};
+
+/** A SUBMITTED thesis with a manuscript (CU-01 preconditions). */
+export async function createAssignableThesis(
+  app: INestApplication,
+  catalog?: CatalogFixture,
+  data: { studentId?: string; advisorId?: string } = {},
+): Promise<ThesisDocument> {
+  const thesis = await createThesis(
+    app,
+    catalog ?? (await createCatalog(app)),
+    data,
+  );
+  return app
+    .get(ThesesService)
+    .addManuscript(
+      thesis.id as string,
+      { buffer: PDF_BYTES, originalname: 'tesis.pdf', size: PDF_BYTES.length },
+      FIXTURE_COORDINATOR,
+    );
+}
+
+/** CU-01 through the service with existing jurors (slot = position + 1). */
+export function assignJury(
+  app: INestApplication,
+  thesisId: string,
+  jurorIds: string[],
+) {
+  return app
+    .get(AssignmentsService)
+    .assignJury(
+      thesisId,
+      { jurors: jurorIds.map((jurorId) => ({ jurorId })) },
+      { id: FIXTURE_COORDINATOR.id, role: Role.COORDINATOR },
+    );
+}
 
 /** supertest parser that collects binary responses into a Buffer. */
 export const binaryParser = (

@@ -5,6 +5,7 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 import { JwtModule } from '@nestjs/jwt';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { AssignmentsModule } from './assignments/assignments.module';
 import { AuthModule } from './auth/auth.module';
 import { CatalogsModule } from './catalogs/catalogs.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
@@ -44,6 +45,7 @@ import { WorkflowModule } from './workflow/workflow.module';
     WorkflowModule,
     SettingsModule,
     ThesesModule,
+    AssignmentsModule,
   ],
   controllers: [HealthController],
   providers: [

@@ -181,6 +181,13 @@ export class ThesesService {
     return thesis;
   }
 
+  /** Bulk lookup for other modules (assignment lists); invalid ids are ignored. */
+  findManyByIds(ids: readonly string[]): Promise<ThesisDocument[]> {
+    return this.model
+      .find({ _id: { $in: ids.filter((id) => isValidObjectId(id)) } })
+      .exec();
+  }
+
   /** 404 (not 403) for theses the user may not read, so ids cannot be probed. */
   async findReadable(id: string, user: AuthUser): Promise<ThesisDocument> {
     const thesis = await this.findById(id);
