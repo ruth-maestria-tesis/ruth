@@ -8,15 +8,21 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AssignmentsModule } from './assignments/assignments.module';
 import { AuthModule } from './auth/auth.module';
 import { CatalogsModule } from './catalogs/catalogs.module';
+import { EvaluationsModule } from './evaluations/evaluations.module';
+import { FeedbackModule } from './feedback/feedback.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { envValidationSchema } from './config/env.validation';
+import { DashboardModule } from './dashboard/dashboard.module';
+import { DefensesModule } from './defenses/defenses.module';
 import { FilesModule } from './files/files.module';
 import { HealthController } from './health.controller';
 import { NotificationsModule } from './notifications/notifications.module';
 import { SchedulerModule } from './scheduler/scheduler.module';
+import { MinutesModule } from './minutes/minutes.module';
 import { SettingsModule } from './settings/settings.module';
 import { ThesesModule } from './theses/theses.module';
+import { TraceabilityModule } from './traceability/traceability.module';
 import { UsersModule } from './users/users.module';
 import { WorkflowModule } from './workflow/workflow.module';
 
@@ -50,6 +56,12 @@ import { WorkflowModule } from './workflow/workflow.module';
     AssignmentsModule,
     NotificationsModule,
     SchedulerModule,
+    DefensesModule,
+    MinutesModule,
+    FeedbackModule,
+    EvaluationsModule,
+    DashboardModule,
+    TraceabilityModule,
   ],
   controllers: [HealthController],
   providers: [

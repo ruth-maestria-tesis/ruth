@@ -103,9 +103,11 @@ export class AssignmentResponsesService {
       .exec();
     if (!updated) throw await this.lostResponseError(current._id, now);
     this.assignments.emit(ASSIGNMENT_EVENTS.ACCEPTED, updated, actor);
-    await this.afterWrite(updated, 'advance to UNDER_EVALUATION', () =>
-      this.advanceIfJuryAccepted(updated.thesisId, actor),
-    );
+    // A tiebreaker accepting changes nothing on the thesis (it stays IN_DISPUTE).
+    if (updated.type === AssignmentType.PRIMARY)
+      await this.afterWrite(updated, 'advance to UNDER_EVALUATION', () =>
+        this.advanceIfJuryAccepted(updated.thesisId, actor),
+      );
     const [view] = await this.assignments.views([updated]);
     return view;
   }
@@ -140,13 +142,15 @@ export class AssignmentResponsesService {
       .exec();
     if (!updated) throw await this.lostResponseError(current._id, now);
     this.assignments.emit(ASSIGNMENT_EVENTS.DECLINED, updated, actor, reason);
-    await this.afterWrite(updated, 'mark PENDING_JUROR_REPLACEMENT', () =>
-      this.markNeedsReplacement(
-        updated.thesisId,
-        actor,
-        'CU-08 FA-01: juror declined',
-      ),
-    );
+    // A declined tiebreaker leaves the thesis IN_DISPUTE; the coordinator designates another.
+    if (updated.type === AssignmentType.PRIMARY)
+      await this.afterWrite(updated, 'mark PENDING_JUROR_REPLACEMENT', () =>
+        this.markNeedsReplacement(
+          updated.thesisId,
+          actor,
+          'CU-08 FA-01: juror declined',
+        ),
+      );
     const [view] = await this.assignments.views([updated]);
     return view;
   }
