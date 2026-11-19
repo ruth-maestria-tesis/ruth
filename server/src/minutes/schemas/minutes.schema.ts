@@ -87,6 +87,10 @@ export class Minutes {
 
   @Prop({ type: ObjectId })
   pdfFileId?: Types.ObjectId;
+
+  /** Demo data written by the seed command. */
+  @Prop()
+  seedTag?: string;
 }
 
 export type MinutesDocument = HydratedDocument<Minutes>;
@@ -94,3 +98,4 @@ export const MinutesSchema = applyJsonTransform(
   SchemaFactory.createForClass(Minutes),
 );
 MinutesSchema.index({ thesisId: 1 }, { unique: true });
+MinutesSchema.index({ seedTag: 1 }, { sparse: true });
