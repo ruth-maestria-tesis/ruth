@@ -10,13 +10,16 @@ export function homeFor(roles: readonly Role[]): string {
   if (roles.includes(Role.ADMIN)) return '/admin/users';
   if (roles.includes(Role.INTERNAL_JUROR) || roles.includes(Role.EXTERNAL_JUROR)) return '/juror';
   if (roles.includes(Role.STUDENT)) return '/student';
-  return '/login';
+  // No usable role: neutral page (never /login, which would loop for an authenticated user).
+  return '/no-access';
 }
 
 export const useAuthStore = defineStore('auth', {
   state: () => ({
     user: null as User | null,
     loaded: false,
+    /** Set once the session-lost redirect ran; reset on login. */
+    sessionLost: false,
   }),
   getters: {
     isAuthenticated: (s) => !!s.user,
@@ -34,6 +37,7 @@ export const useAuthStore = defineStore('auth', {
     async fetchMe() {
       try {
         this.user = (await authApi.me()).user;
+        this.sessionLost = false;
       } catch {
         this.user = null;
       } finally {
@@ -43,12 +47,14 @@ export const useAuthStore = defineStore('auth', {
     async login(email: string, password: string) {
       this.user = (await authApi.login(email, password)).user;
       this.loaded = true;
+      this.sessionLost = false;
     },
     /** RF-J14: returns the assignment the link was issued for. */
     async loginExternal(token: string): Promise<string> {
       const r = await authApi.validateExternalToken(token);
       this.user = r.user;
       this.loaded = true;
+      this.sessionLost = false;
       return r.assignmentId;
     },
     async logout() {

@@ -4,6 +4,7 @@ const PUBLIC = ['/login', '/auth/external-access'];
 
 export default defineNuxtRouteMiddleware(async (to) => {
   const auth = useAuthStore();
+  // fetchMe() is silent: this middleware alone decides the redirect on a cold start.
   if (!auth.loaded) await auth.fetchMe();
   const isPublic = PUBLIC.includes(to.path) || to.path.startsWith('/external/');
   if (isPublic) {

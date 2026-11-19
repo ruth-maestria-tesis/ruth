@@ -30,8 +30,9 @@ function startEdit() {
   const d = defense.value;
   if (d) {
     const at = new Date(d.scheduledAt);
-    form.date = at.toISOString().slice(0, 10);
-    form.time = at.toTimeString().slice(0, 5);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    form.date = `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}`;
+    form.time = `${pad(at.getHours())}:${pad(at.getMinutes())}`;
     form.modality = d.modality;
     form.location = d.location ?? '';
     form.meetingUrl = d.meetingUrl ?? '';

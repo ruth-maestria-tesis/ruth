@@ -5,8 +5,10 @@
  * same cookie revoke the whole session. So refresh is single-flight:
  *  - in this tab: one shared in-flight promise;
  *  - across tabs: the Web Locks API serialises refreshes, and a tab that waited on
- *    the lock skips its own refresh when another tab refreshed meanwhile.
- * The original request is retried once; if refresh fails we go to /login.
+ *    the lock skips its own refresh when another tab refreshed meanwhile. Without
+ *    Web Locks (insecure context) a localStorage lease plays the same role.
+ * The original request is retried once; if the refresh is rejected (401/403) we go to /login.
+ * A network failure during refresh keeps the session (NETWORK_ERROR is thrown instead).
  */
 import { ErrorCode } from '@thesis/shared';
 import type { ApiErrorBody } from '~/types/api';
@@ -39,6 +41,7 @@ export const apiUrl = (path: string): string => `${apiBase}${path.startsWith('/'
 
 const REFRESHED_AT_KEY = 'thesis-auth:refreshedAt';
 const LOCK_NAME = 'thesis-auth-refresh';
+const LEASE_KEY = 'thesis-auth:refreshLease';
 const channel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('thesis-auth') : null;
 
 let inFlight: Promise<boolean> | null = null;
@@ -51,20 +54,63 @@ const readRefreshedAt = (): number => {
   }
 };
 
+/** true = refreshed; false = the server rejected the refresh token; throws on network/server failure. */
 async function postRefresh(): Promise<boolean> {
+  let res: Response;
   try {
-    const res = await fetch(apiUrl('/auth/refresh'), { method: 'POST', credentials: 'include' });
-    if (res.ok) {
-      try {
-        localStorage.setItem(REFRESHED_AT_KEY, String(Date.now()));
-      } catch {
-        /* storage blocked: the lock still serialises refreshes */
-      }
-      return true;
-    }
-    return false;
+    res = await fetch(apiUrl('/auth/refresh'), { method: 'POST', credentials: 'include' });
   } catch {
-    return false;
+    throw new ApiError(0, 'NETWORK_ERROR', 'Network error');
+  }
+  if (res.ok) {
+    try {
+      localStorage.setItem(REFRESHED_AT_KEY, String(Date.now()));
+    } catch {
+      /* storage blocked: the lock still serialises refreshes */
+    }
+    return true;
+  }
+  if (res.status === 401 || res.status === 403) return false;
+  throw await toError(res);
+}
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+const LEASE_TTL_MS = 10_000;
+const LEASE_WAIT_MS = 8_000;
+const OWNER_ID = Math.random().toString(36).slice(2);
+
+const readLease = (): { owner: string; ts: number } | null => {
+  try {
+    return JSON.parse(localStorage.getItem(LEASE_KEY) ?? 'null');
+  } catch {
+    return null;
+  }
+};
+
+/** Fallback for contexts without navigator.locks: a best-effort localStorage lease. */
+async function withLease<T>(fn: () => Promise<T>): Promise<T> {
+  const deadline = Date.now() + LEASE_WAIT_MS;
+  try {
+    while (Date.now() < deadline) {
+      const lease = readLease();
+      if (!lease || lease.owner === OWNER_ID || Date.now() - lease.ts > LEASE_TTL_MS) {
+        localStorage.setItem(LEASE_KEY, JSON.stringify({ owner: OWNER_ID, ts: Date.now() }));
+        await sleep(40); // let a racing tab overwrite us, then confirm who won
+        if (readLease()?.owner === OWNER_ID) break;
+      }
+      await sleep(100);
+    }
+  } catch {
+    /* storage blocked: proceed unserialised */
+  }
+  try {
+    return await fn();
+  } finally {
+    try {
+      if (readLease()?.owner === OWNER_ID) localStorage.removeItem(LEASE_KEY);
+    } catch {
+      /* ignore */
+    }
   }
 }
 
@@ -77,7 +123,7 @@ export function refreshSession(since = Date.now()): Promise<boolean> {
     return postRefresh();
   };
   const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined;
-  const started = (locks ? locks.request(LOCK_NAME, run).then((v) => v) : run()).finally(() => {
+  const started = (locks ? locks.request(LOCK_NAME, run).then((v) => v) : withLease(run)).finally(() => {
     inFlight = null;
   });
   inFlight = started;
@@ -102,6 +148,8 @@ export interface RequestOptions {
   body?: unknown;
   /** Return the raw Response (downloads). */
   raw?: boolean;
+  /** A 401 never triggers the session-lost handler (the caller decides what to do). */
+  silent?: boolean;
 }
 
 function buildUrl(path: string, query?: RequestOptions['query']): string {
@@ -144,9 +192,10 @@ export async function request<T>(path: string, opts: RequestOptions = {}): Promi
   }
 
   if (res.status === 401 && !NO_REFRESH.some((p) => path.startsWith(p))) {
+    // A network failure during refresh rejects with NETWORK_ERROR: the session is kept.
     const ok = await refreshSession(sentAt);
     if (!ok) {
-      onSessionLost?.();
+      if (!opts.silent) onSessionLost?.();
       throw await toError(res);
     }
     try {
@@ -155,7 +204,7 @@ export async function request<T>(path: string, opts: RequestOptions = {}): Promi
       throw new ApiError(0, 'NETWORK_ERROR', 'Network error');
     }
     if (res.status === 401) {
-      onSessionLost?.();
+      if (!opts.silent) onSessionLost?.();
       throw await toError(res);
     }
   }
