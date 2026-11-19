@@ -1,0 +1,248 @@
+/' ==============================================================================
+   REPOSITORIO DE TESIS DE POSGRADO — UNIVERSIDAD DE CÓRDOBA
+   SCRIPTS PLANTUML PARA IMPORTACIÓN DIRECTA EN LUCIDCHART
+   
+   Instrucciones en Lucidchart:
+   1. Abre un nuevo documento en Lucidchart.
+   2. Ve al menú superior: Insertar (Insert) > Marcado (Markup) > PlantUML.
+   3. Copia y pega el bloque correspondiente (desde @startuml hasta @enduml).
+   4. Haz clic en "Insertar" y Lucidchart creará el diagrama con todas las formas y conectores.
+============================================================================== '/
+
+' ------------------------------------------------------------------------------
+' 1. DIAGRAMA GENERAL DE CASOS DE USO (SISTEMA COMPLETO)
+' ------------------------------------------------------------------------------
+@startuml
+title Repositorio de Tesis de Posgrado - Diagrama General de Casos de Uso
+left to right direction
+skinparam packageStyle rectangle
+skinparam actorStyle awesome
+
+actor "Coordinador de Posgrados" as Coord
+actor "Jurado Interno\n(Unicórdoba)" as JuradoInt
+actor "Jurado Externo" as JuradoExt
+actor "Estudiante / Tesista" as Estudiante
+actor "Sistema Cron / Alertas" as CronSys
+
+rectangle "Sistema de Gestión de Tesis — Universidad de Córdoba" {
+
+  package "Módulo 1: Asignación y Gestión de Jurados" {
+    usecase "CU-01: Asignar Jurados a Tesis" as CU01
+    usecase "CU-08: Aceptar o Declinar Designación" as CU08
+    usecase "CU-05: Gestionar Discrepancia y Dirimente" as CU05
+  }
+
+  package "Módulo 2: Evaluación y Retroalimentación" {
+    usecase "CU-02: Evaluar Tesis y Emitir Concepto" as CU02
+    usecase "CU-06: Retroalimentación por Capítulos" as CU06
+  }
+
+  package "Módulo 3: Sustentación y Acta Final" {
+    usecase "CU-03: Programar y Confirmar Sustentación" as CU03
+    usecase "CU-04: Diligenciar y Firmar Acta" as CU04
+  }
+
+  package "Módulo 4: Seguimiento y Auditoría" {
+    usecase "CU-07: Monitorear Progreso y Grafo" as CU07
+    usecase "CU-09: Exportar Reportes y Auditoría" as CU09
+  }
+}
+
+' Relaciones Coordinador
+Coord --> CU01
+Coord --> CU05
+Coord --> CU03
+Coord --> CU04
+Coord --> CU07
+Coord --> CU09
+
+' Relaciones Jurado Interno
+JuradoInt --> CU08
+JuradoInt --> CU02
+JuradoInt --> CU06
+JuradoInt --> CU03
+JuradoInt --> CU04
+
+' Relaciones Jurado Externo
+JuradoExt --> CU08
+JuradoExt --> CU02
+JuradoExt --> CU06
+JuradoExt --> CU03
+JuradoExt --> CU04
+
+' Relaciones Estudiante
+Estudiante --> CU06
+Estudiante --> CU07
+
+' Relaciones Sistema Automatizado
+CronSys --> CU08
+CronSys --> CU02
+CronSys --> CU07
+@enduml
+
+
+' ------------------------------------------------------------------------------
+' 2. MÓDULO 1: ASIGNACIÓN Y GESTIÓN DE JURADOS (CU-01, CU-08, CU-05)
+' ------------------------------------------------------------------------------
+@startuml
+title Módulo 1: Asignación, Aceptación y Discrepancia de Jurados (CU-01, CU-08, CU-05)
+left to right direction
+skinparam packageStyle rectangle
+
+actor "Coordinador de Posgrados" as Coord
+actor "Jurado Evaluador\n(Interno / Externo)" as Jurado
+actor "Sistema de Alertas" as CronSys
+
+rectangle "Módulo 1: Asignación y Gestión de Jurados" {
+  usecase "CU-01: Asignar Jurados a Tesis" as CU01
+  usecase "Validar Paridad (Exactamente 2 Jurados)" as Val_Paridad
+  usecase "Validar Mínimo 1 Jurado Unicórdoba (RF-C13)" as Val_Unicor
+  usecase "Verificar Conflicto de Interés (RN-01)" as Val_Conflicto
+  usecase "Registrar Datos Jurado Externo (RF-C14)" as Ext_Datos
+
+  usecase "CU-08: Aceptar o Declinar Designación" as CU08
+  usecase "Validar Plazo de Aceptación (RF-J13)" as Val_Plazo
+  usecase "Registrar Causal de Rechazo" as Ext_Rechazo
+  usecase "Acceso Express por Token Seguro (RF-J14)" as Inc_Token
+
+  usecase "CU-05: Gestionar Discrepancia y Dirimente (RN-08)" as CU05
+  usecase "Designar Tercer Jurado Dirimente" as Inc_Dirimente
+}
+
+' Flujos CU-01
+Coord --> CU01
+CU01 ..> Val_Paridad : <<include>>
+CU01 ..> Val_Unicor : <<include>>
+CU01 ..> Val_Conflicto : <<include>>
+CU01 ..> Ext_Datos : <<extend>>
+
+' Flujos CU-08
+Jurado --> CU08
+CU08 ..> Val_Plazo : <<include>>
+CU08 ..> Inc_Token : <<include>>
+CU08 ..> Ext_Rechazo : <<extend>>
+CronSys --> Val_Plazo
+
+' Flujos CU-05
+Coord --> CU05
+CU05 ..> Inc_Dirimente : <<include>>
+@enduml
+
+
+' ------------------------------------------------------------------------------
+' 3. MÓDULO 2: EVALUACIÓN Y RETROALIMENTACIÓN POR CAPÍTULOS (CU-02, CU-06)
+' ------------------------------------------------------------------------------
+@startuml
+title Módulo 2: Evaluación y Retroalimentación por Capítulos (CU-02, CU-06)
+left to right direction
+skinparam packageStyle rectangle
+
+actor "Jurado Evaluador" as Jurado
+actor "Estudiante / Tesista" as Estudiante
+actor "Coordinador de Posgrado" as Coord
+
+rectangle "Módulo 2: Evaluación y Retroalimentación de Tesis" {
+  usecase "CU-02: Evaluar Tesis y Emitir Concepto" as CU02
+  usecase "Diligenciar Rúbrica Oficial (1 a 5)" as Inc_Rubrica
+  usecase "Adjuntar PDF con Anotaciones (RF-J03)" as Ext_PDF
+  usecase "Transicionar a CONCEPTO_EMITIDO" as Inc_Estado
+
+  usecase "CU-06: Retroalimentación por Capítulos" as CU06
+  usecase "Crear Observación en Capítulo (Pendiente)" as Ext_Obs
+  usecase "Atender Observación y Adjuntar Evidencia (RN-06)" as Ext_Atender
+  usecase "Aprobar Subsanación (RN-06)" as Inc_Aprobar
+  usecase "CU-06b: Consultar Retroalimentación Consolidada (RF-R04)" as CU06b
+}
+
+' Flujos CU-02
+Jurado --> CU02
+CU02 ..> Inc_Rubrica : <<include>>
+CU02 ..> Inc_Estado : <<include>>
+CU02 ..> Ext_PDF : <<extend>>
+
+' Flujos CU-06
+Jurado --> CU06
+Estudiante --> CU06
+CU06 ..> Ext_Obs : <<extend>>
+CU06 ..> Ext_Atender : <<extend>>
+CU06 ..> Inc_Aprobar : <<include>>
+
+' Consulta consolidada
+Coord --> CU06b
+Estudiante --> CU06b
+@enduml
+
+
+' ------------------------------------------------------------------------------
+' 4. MÓDULO 3: SUSTENTACIÓN Y ACTA FINAL INMUTABLE (CU-03, CU-04)
+' ------------------------------------------------------------------------------
+@startuml
+title Módulo 3: Sustentación y Acta Final Inmutable (CU-03, CU-04)
+left to right direction
+skinparam packageStyle rectangle
+
+actor "Coordinador de Posgrados" as Coord
+actor "Jurados Evaluadores" as Jurado
+
+rectangle "Módulo 3: Sustentación y Acta Oficial" {
+  usecase "CU-03: Programar y Confirmar Sustentación" as CU03
+  usecase "Registrar Fecha, Hora y Modalidad" as Inc_Prop
+  usecase "Confirmar Disponibilidad por Jurados" as Inc_Conf
+
+  usecase "CU-04: Diligenciar y Confirmar Acta" as CU04
+  usecase "Consolidar Nota y Menciones de Honor" as Inc_Calc
+  usecase "Confirmación Electrónica Simple (RF-J10)" as Inc_Firma
+  usecase "Sellado Criptográfico e Inmutabilidad (RNF-04)" as Inc_Hash
+  usecase "Generar Copia Oficial en PDF" as Ext_PDF
+}
+
+' Flujos CU-03
+Coord --> CU03
+Jurado --> CU03
+CU03 ..> Inc_Prop : <<include>>
+CU03 ..> Inc_Conf : <<include>>
+
+' Flujos CU-04
+Coord --> CU04
+Jurado --> CU04
+CU04 ..> Inc_Calc : <<include>>
+CU04 ..> Inc_Firma : <<include>>
+CU04 ..> Inc_Hash : <<include>>
+CU04 ..> Ext_PDF : <<extend>>
+@enduml
+
+
+' ------------------------------------------------------------------------------
+' 5. MÓDULO 4: MONITOREO, GRAFO Y AUDITORÍA (CU-07, CU-09)
+' ------------------------------------------------------------------------------
+@startuml
+title Módulo 4: Trazabilidad, Grafo de Estados y Auditoría (CU-07, CU-09)
+left to right direction
+skinparam packageStyle rectangle
+
+actor "Coordinador de Posgrados" as Coord
+actor "Estudiante / Tesista" as Estudiante
+
+rectangle "Módulo 4: Monitoreo, Grafo y Auditoría" {
+  usecase "CU-07: Monitorear Progreso y Grafo" as CU07
+  usecase "Renderizar Grafo Interactivo (RF-C16)" as Inc_Grafo
+  usecase "Calcular % de Avance según Estado (RF-P02)" as Inc_Metricas
+  usecase "Filtrar por Programa y Cohorte" as Ext_Filtros
+
+  usecase "CU-09: Auditoría y Exportación" as CU09
+  usecase "Consultar Bitácora Inmutable de Auditoría" as Inc_Log
+  usecase "Exportar Reporte Consolidado (Excel/PDF)" as Ext_Export
+}
+
+' Flujos CU-07
+Coord --> CU07
+Estudiante --> CU07
+CU07 ..> Inc_Grafo : <<include>>
+CU07 ..> Inc_Metricas : <<include>>
+CU07 ..> Ext_Filtros : <<extend>>
+
+' Flujos CU-09
+Coord --> CU09
+CU09 ..> Inc_Log : <<include>>
+CU09 ..> Ext_Export : <<extend>>
+@enduml

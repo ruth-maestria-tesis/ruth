@@ -1,0 +1,40 @@
+@startuml
+title Módulo 2: Evaluación y Retroalimentación por Capítulos (CU-02, CU-06)
+left to right direction
+skinparam packageStyle rectangle
+
+actor "Jurado Evaluador" as Jurado
+actor "Estudiante / Tesista" as Estudiante
+actor "Coordinador de Posgrado" as Coord
+
+rectangle "Módulo 2: Evaluación y Retroalimentación de Tesis" {
+  usecase "CU-02: Evaluar Tesis y Emitir Concepto" as CU02
+  usecase "Diligenciar Rúbrica Oficial (1 a 5)" as Inc_Rubrica
+  usecase "Adjuntar PDF con Anotaciones (RF-J03)" as Ext_PDF
+  usecase "Transicionar a CONCEPTO_EMITIDO" as Inc_Estado
+
+  usecase "CU-06: Retroalimentación por Capítulos" as CU06
+  usecase "Crear Observación en Capítulo (Pendiente)" as Ext_Obs
+  usecase "Atender Observación y Adjuntar Evidencia (RN-06)" as Ext_Atender
+  usecase "Aprobar Subsanación (RN-06)" as Inc_Aprobar
+  usecase "CU-06b: Consultar Retroalimentación Consolidada (RF-R04)" as CU06b
+}
+
+' Flujos CU-02
+Jurado --> CU02
+CU02 ..> Inc_Rubrica : <<include>>
+CU02 ..> Inc_Estado : <<include>>
+CU02 ..> Ext_PDF : <<extend>>
+
+' Flujos CU-06
+Jurado --> CU06
+Estudiante --> CU06
+CU06 ..> Ext_Obs : <<extend>>
+CU06 ..> Ext_Atender : <<extend>>
+CU06 ..> Inc_Aprobar : <<include>>
+
+' Consulta consolidada
+Coord --> CU06b
+Estudiante --> CU06b
+
+@enduml

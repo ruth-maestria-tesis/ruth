@@ -1,0 +1,32 @@
+@startuml
+title Módulo 4: Trazabilidad, Grafo de Estados y Auditoría (CU-07, CU-09)
+left to right direction
+skinparam packageStyle rectangle
+
+actor "Coordinador de Posgrados" as Coord
+actor "Estudiante / Tesista" as Estudiante
+
+rectangle "Módulo 4: Monitoreo, Grafo y Auditoría" {
+  usecase "CU-07: Monitorear Progreso y Grafo" as CU07
+  usecase "Renderizar Grafo Interactivo (RF-C16)" as Inc_Grafo
+  usecase "Calcular % de Avance según Estado (RF-P02)" as Inc_Metricas
+  usecase "Filtrar por Programa y Cohorte" as Ext_Filtros
+
+  usecase "CU-09: Auditoría y Exportación" as CU09
+  usecase "Consultar Bitácora Inmutable de Auditoría" as Inc_Log
+  usecase "Exportar Reporte Consolidado (Excel/PDF)" as Ext_Export
+}
+
+' Flujos CU-07
+Coord --> CU07
+Estudiante --> CU07
+CU07 ..> Inc_Grafo : <<include>>
+CU07 ..> Inc_Metricas : <<include>>
+CU07 ..> Ext_Filtros : <<extend>>
+
+' Flujos CU-09
+Coord --> CU09
+CU09 ..> Inc_Log : <<include>>
+CU09 ..> Ext_Export : <<extend>>
+
+@enduml

@@ -1,0 +1,1671 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mockups Interactivos — Repositorio de Tesis de Posgrado | Universidad de Córdoba</title>
+  <!-- Google Fonts Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  
+  <style>
+    :root {
+      --primary: #006837;
+      --primary-dark: #004d28;
+      --primary-light: #e8f5e9;
+      --secondary: #FDB913;
+      --secondary-dark: #d99a07;
+      --secondary-light: #fef9e7;
+      --accent: #0284c7;
+      --accent-light: #e0f2fe;
+      --danger: #dc2626;
+      --danger-light: #fee2e2;
+      --success: #16a34a;
+      --success-light: #dcfce7;
+      --warning: #f59e0b;
+      --warning-light: #fef3c7;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --border: #e2e8f0;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --radius: 10px;
+      --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+      --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+      --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+
+    /* Top Global Header */
+    .top-bar {
+      background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 100%);
+      color: white;
+      padding: 0.75rem 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: var(--shadow);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.85rem;
+    }
+
+    .brand-logo {
+      width: 40px;
+      height: 40px;
+      background: white;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      color: var(--primary);
+      font-size: 1.25rem;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
+
+    .brand-text h1 {
+      font-size: 1.05rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+
+    .brand-text p {
+      font-size: 0.75rem;
+      opacity: 0.85;
+    }
+
+    .top-controls {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .role-badge-selector {
+      background: rgba(255, 255, 255, 0.15);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 20px;
+      padding: 0.35rem 0.85rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.825rem;
+      backdrop-filter: blur(8px);
+    }
+
+    .role-select {
+      background: transparent;
+      border: none;
+      color: white;
+      font-weight: 600;
+      font-size: 0.85rem;
+      outline: none;
+      cursor: pointer;
+    }
+
+    .role-select option {
+      color: var(--text);
+      background: white;
+    }
+
+    /* Navigation Tabs Bar */
+    .tabs-bar {
+      background: white;
+      border-bottom: 1px solid var(--border);
+      padding: 0 1.5rem;
+      display: flex;
+      gap: 0.5rem;
+      overflow-x: auto;
+      white-space: nowrap;
+    }
+
+    .tab-btn {
+      padding: 0.85rem 1rem;
+      border: none;
+      background: none;
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: var(--text-muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      border-bottom: 2px solid transparent;
+      transition: all 0.2s ease;
+    }
+
+    .tab-btn:hover {
+      color: var(--primary);
+      background: #f1f5f9;
+    }
+
+    .tab-btn.active {
+      color: var(--primary);
+      font-weight: 600;
+      border-bottom-color: var(--primary);
+    }
+
+    .badge-counter {
+      background: var(--secondary);
+      color: #78350f;
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 0.1rem 0.45rem;
+      border-radius: 12px;
+    }
+
+    /* Main Container */
+    .main-content {
+      flex: 1;
+      padding: 1.5rem;
+      max-width: 1400px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    /* Views */
+    .view-container {
+      display: none;
+      animation: fadeIn 0.25s ease-out;
+    }
+
+    .view-container.active {
+      display: block;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Card Utilities */
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      box-shadow: var(--shadow-sm);
+      margin-bottom: 1.5rem;
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1.25rem;
+      padding-bottom: 0.75rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .card-title {
+      font-size: 1.15rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      color: var(--text);
+    }
+
+    .card-subtitle {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-top: 0.2rem;
+    }
+
+    /* Grid Layouts */
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 1.25rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .kpi-card {
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.25rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: var(--shadow-sm);
+      border-left: 4px solid var(--primary);
+    }
+
+    .kpi-card.warning { border-left-color: var(--warning); }
+    .kpi-card.info { border-left-color: var(--accent); }
+    .kpi-card.success { border-left-color: var(--success); }
+
+    .kpi-value {
+      font-size: 1.75rem;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .kpi-label {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .kpi-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: var(--bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--primary);
+    }
+
+    /* Table Styles */
+    .table-container {
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 0.875rem;
+    }
+
+    th {
+      background: #f8fafc;
+      padding: 0.85rem 1rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--border);
+    }
+
+    td {
+      padding: 0.95rem 1rem;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+
+    tr:hover td {
+      background: #f8fafc;
+    }
+
+    /* Badges */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.25rem 0.65rem;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .badge-primary { background: var(--primary-light); color: var(--primary-dark); }
+    .badge-warning { background: var(--warning-light); color: #92400e; }
+    .badge-danger { background: var(--danger-light); color: var(--danger); }
+    .badge-success { background: var(--success-light); color: var(--success); }
+    .badge-info { background: var(--accent-light); color: var(--accent); }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      padding: 0.55rem 1rem;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-weight: 500;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: all 0.2s;
+    }
+
+    .btn-sm {
+      padding: 0.35rem 0.65rem;
+      font-size: 0.785rem;
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: var(--primary-dark);
+    }
+
+    .btn-outline {
+      background: transparent;
+      border-color: var(--border);
+      color: var(--text);
+    }
+
+    .btn-outline:hover {
+      background: #f1f5f9;
+      border-color: #cbd5e1;
+    }
+
+    .btn-danger {
+      background: var(--danger);
+      color: white;
+    }
+
+    .btn-danger:hover {
+      background: #b91c1c;
+    }
+
+    .btn-success {
+      background: var(--success);
+      color: white;
+    }
+
+    .btn-success:hover {
+      background: #15803d;
+    }
+
+    /* Modals */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.6);
+      backdrop-filter: blur(4px);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+
+    .modal-overlay.active {
+      display: flex;
+    }
+
+    .modal-box {
+      background: white;
+      border-radius: var(--radius);
+      width: 100%;
+      max-width: 650px;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: var(--shadow-lg);
+      border: 1px solid var(--border);
+      animation: modalSlide 0.2s ease-out;
+    }
+
+    @keyframes modalSlide {
+      from { transform: scale(0.95); opacity: 0; }
+      to { transform: scale(1); opacity: 1; }
+    }
+
+    .modal-header {
+      padding: 1.25rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .modal-body {
+      padding: 1.5rem;
+    }
+
+    .modal-footer {
+      padding: 1rem 1.5rem;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.75rem;
+      background: #f8fafc;
+    }
+
+    /* Form Inputs */
+    .form-group {
+      margin-bottom: 1.25rem;
+    }
+
+    .form-label {
+      display: block;
+      font-size: 0.825rem;
+      font-weight: 600;
+      margin-bottom: 0.4rem;
+      color: var(--text);
+    }
+
+    .form-control {
+      width: 100%;
+      padding: 0.6rem 0.85rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 0.875rem;
+      font-family: inherit;
+      color: var(--text);
+      outline: none;
+      transition: border 0.2s;
+    }
+
+    .form-control:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(0, 104, 55, 0.15);
+    }
+
+    .alert {
+      padding: 0.85rem 1rem;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .alert-danger { background: var(--danger-light); color: #991b1b; border: 1px solid #fecaca; }
+    .alert-warning { background: var(--warning-light); color: #92400e; border: 1px solid #fde68a; }
+    .alert-info { background: var(--accent-light); color: #075985; border: 1px solid #bae6fd; }
+    .alert-success { background: var(--success-light); color: #166534; border: 1px solid #bbf7d0; }
+
+    /* Progress bar */
+    .progress-bar-bg {
+      width: 100%;
+      height: 8px;
+      background: #e2e8f0;
+      border-radius: 4px;
+      overflow: hidden;
+      margin-top: 0.35rem;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      background: var(--primary);
+      border-radius: 4px;
+      transition: width 0.3s;
+    }
+
+    /* Split Screen Evaluation */
+    .eval-split {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+      height: 680px;
+    }
+
+    .pdf-viewer-mock {
+      background: #475569;
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      color: white;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      overflow-y: auto;
+    }
+
+    .pdf-page {
+      background: white;
+      color: #1e293b;
+      padding: 2.5rem;
+      border-radius: 4px;
+      box-shadow: var(--shadow);
+      min-height: 520px;
+      font-family: serif;
+      font-size: 0.95rem;
+      line-height: 1.8;
+      margin-bottom: 1.5rem;
+    }
+
+    /* Grafo Interactivo */
+    .graph-canvas {
+      width: 100%;
+      height: 480px;
+      background: #f1f5f9;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .node-item {
+      padding: 0.85rem 1.25rem;
+      background: white;
+      border: 2px solid var(--primary);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      text-align: center;
+      cursor: pointer;
+      position: absolute;
+      transition: all 0.2s;
+    }
+
+    .node-item:hover {
+      transform: translateY(-3px) scale(1.03);
+      box-shadow: var(--shadow-lg);
+    }
+
+    .node-item.completed {
+      border-color: var(--success);
+      background: #f0fdf4;
+    }
+
+    .node-item.active {
+      border-color: var(--accent);
+      background: #f0f9ff;
+      box-shadow: 0 0 0 4px rgba(2, 132, 199, 0.2);
+    }
+
+    /* Crypto Hash Block */
+    .hash-badge {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+      background: #1e293b;
+      color: #38bdf8;
+      padding: 0.5rem 0.85rem;
+      border-radius: 6px;
+      display: inline-block;
+      word-break: break-all;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Global Header -->
+  <header class="top-bar">
+    <div class="brand">
+      <div class="brand-logo">UC</div>
+      <div class="brand-text">
+        <h1>Plataforma de Tesis de Posgrado</h1>
+        <p>Universidad de Córdoba — Vicerrectoría de Investigación y Posgrados</p>
+      </div>
+    </div>
+    <div class="top-controls">
+      <div class="role-badge-selector">
+        <i data-lucide="user-check" style="width: 16px; height: 16px;"></i>
+        <span>Simular Rol:</span>
+        <select id="activeRoleSelector" class="role-select" onchange="switchRole(this.value)">
+          <option value="coordinador">🏢 Coordinador de Posgrado</option>
+          <option value="jurado">👨‍🏫 Jurado Interno (Unicor)</option>
+          <option value="jurado-ext">🌍 Jurado Externo (Token Express)</option>
+          <option value="estudiante">🎓 Estudiante / Tesista</option>
+        </select>
+      </div>
+    </div>
+  </header>
+
+  <!-- Navigation Tabs Bar -->
+  <nav class="tabs-bar" id="navigationTabs">
+    <button class="tab-btn active" onclick="showView('view-dash-coordinador')">
+      <i data-lucide="layout-dashboard" style="width: 16px; height: 16px;"></i>
+      Dashboard Coordinación
+    </button>
+    <button class="tab-btn" onclick="showView('view-bandeja-tesis')">
+      <i data-lucide="folder-kanban" style="width: 16px; height: 16px;"></i>
+      Bandeja General de Tesis
+      <span class="badge-counter">4 Pendientes</span>
+    </button>
+    <button class="tab-btn" onclick="showView('view-portal-jurado')">
+      <i data-lucide="check-square" style="width: 16px; height: 16px;"></i>
+      Portal Jurado (CU-08)
+    </button>
+    <button class="tab-btn" onclick="showView('view-evaluacion-split')">
+      <i data-lucide="file-signature" style="width: 16px; height: 16px;"></i>
+      Evaluación & Rúbrica (CU-02)
+    </button>
+    <button class="tab-btn" onclick="showView('view-retroalimentacion')">
+      <i data-lucide="message-square" style="width: 16px; height: 16px;"></i>
+      Retroalimentación Capítulos (CU-06)
+    </button>
+    <button class="tab-btn" onclick="showView('view-discrepancia')">
+      <i data-lucide="git-merge" style="width: 16px; height: 16px;"></i>
+      Discrepancia & Dirimente (CU-05)
+    </button>
+    <button class="tab-btn" onclick="showView('view-acta-firma')">
+      <i data-lucide="award" style="width: 16px; height: 16px;"></i>
+      Acta & Firma Electrónica (CU-04)
+    </button>
+    <button class="tab-btn" onclick="showView('view-trazabilidad-grafo')">
+      <i data-lucide="network" style="width: 16px; height: 16px;"></i>
+      Grafo Trazabilidad (CU-07)
+    </button>
+    <button class="tab-btn" onclick="showView('view-mapa-navegacion')">
+      <i data-lucide="map" style="width: 16px; height: 16px;"></i>
+      Mapa Navegación & RBAC
+    </button>
+  </nav>
+
+  <!-- Main Content Container -->
+  <main class="main-content">
+
+    <!-- ==================== VISTA 1: DASHBOARD COORDINADOR ==================== -->
+    <div id="view-dash-coordinador" class="view-container active">
+      <div class="grid-4">
+        <div class="kpi-card">
+          <div>
+            <div class="kpi-value">12</div>
+            <div class="kpi-label">Tesis Radicadas (Por Asignar)</div>
+          </div>
+          <div class="kpi-icon"><i data-lucide="inbox"></i></div>
+        </div>
+        <div class="kpi-card warning">
+          <div>
+            <div class="kpi-value">18</div>
+            <div class="kpi-label">En Evaluación (2 por vencer)</div>
+          </div>
+          <div class="kpi-icon" style="color: var(--warning);"><i data-lucide="clock"></i></div>
+        </div>
+        <div class="kpi-card info">
+          <div>
+            <div class="kpi-value">6</div>
+            <div class="kpi-label">Subsanación de Observaciones</div>
+          </div>
+          <div class="kpi-icon" style="color: var(--accent);"><i data-lucide="edit-3"></i></div>
+        </div>
+        <div class="kpi-card success">
+          <div>
+            <div class="kpi-value">24</div>
+            <div class="kpi-label">Sustentadas & Actas Selladas</div>
+          </div>
+          <div class="kpi-icon" style="color: var(--success);"><i data-lucide="check-circle-2"></i></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title"><i data-lucide="alert-triangle" style="color: var(--warning);"></i> Alertas Operativas Prioritarias</div>
+            <div class="card-subtitle">Plazos de evaluación y respuestas de jurados por vencer en los próximos 3 días hábiles</div>
+          </div>
+          <button class="btn btn-outline btn-sm" onclick="showView('view-bandeja-tesis')">Ver Todas</button>
+        </div>
+
+        <div class="alert alert-warning">
+          <i data-lucide="clock" style="width: 20px; height: 20px; flex-shrink: 0;"></i>
+          <div>
+            <strong>Tesis MCIA-2026-044:</strong> El jurado evaluador Dr. Carlos Mendoza tiene 1 día hábil restante para aceptar o declinar la designación formal (RF-J13).
+            <div style="margin-top: 0.35rem;">
+              <button class="btn btn-sm btn-outline" onclick="alert('Notificación de recordatorio reenviada al correo docente institucional.')">Reenviar Recordatorio</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="alert alert-danger">
+          <i data-lucide="git-branch" style="width: 20px; height: 20px; flex-shrink: 0;"></i>
+          <div>
+            <strong>Discrepancia en Tesis DOC-EDU-2026-012:</strong> Jurado 1 emitió <em>Aprobado</em> y Jurado 2 emitió <em>Rechazado</em>. La tesis requiere asignación urgente de <strong>Jurado Dirimente</strong> (RN-08).
+            <div style="margin-top: 0.35rem;">
+              <button class="btn btn-sm btn-danger" onclick="showView('view-discrepancia')">Resolver Discrepancia</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== VISTA 2: BANDEJA DE TESIS (CU-01) ==================== -->
+    <div id="view-bandeja-tesis" class="view-container">
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title"><i data-lucide="folder-kanban"></i> Gestión y Bandeja de Tesis de Posgrado</div>
+            <div class="card-subtitle">Filtros por programa de posgrado, estado operativo y cohorte (RF-C01)</div>
+          </div>
+          <div style="display: flex; gap: 0.5rem;">
+            <input type="text" class="form-control" placeholder="Buscar por título o estudiante..." style="width: 260px;">
+            <select class="form-control" style="width: 220px;">
+              <option>Todos los Programas</option>
+              <option selected>Maestría en Ciencias Ambientales</option>
+              <option>Doctorado en Educación</option>
+              <option>Maestría en Biotecnología</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Código</th>
+                <th>Título de la Tesis</th>
+                <th>Estudiante / Director</th>
+                <th>Jurados Asignados</th>
+                <th>Avance (RF-P02)</th>
+                <th>Estado</th>
+                <th style="text-align: right;">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>MCIA-089</strong></td>
+                <td>
+                  <strong>Biorremediación de aguas residuales en la cuenca del Río Sinú</strong>
+                  <div style="font-size: 0.75rem; color: var(--text-muted);">Cohorte 2024-II • Modalidad Investigación</div>
+                </td>
+                <td>
+                  <div>Laura Marcela Pérez</div>
+                  <div style="font-size: 0.75rem; color: var(--text-muted);">Dir: Dr. Roberto Gómez (Unicor)</div>
+                </td>
+                <td>
+                  <span class="badge badge-warning">Sin Asignar (0/2)</span>
+                </td>
+                <td>
+                  <div style="font-size: 0.8rem; font-weight: 600;">10%</div>
+                  <div class="progress-bar-bg"><div class="progress-bar-fill" style="width: 10%;"></div></div>
+                </td>
+                <td><span class="badge badge-primary">Radicada</span></td>
+                <td style="text-align: right;">
+                  <button class="btn btn-sm btn-primary" onclick="openModalAsignar('MCIA-089', 'Biorremediación de aguas residuales en la cuenca del Río Sinú', 'Laura Marcela Pérez', 'Dr. Roberto Gómez')">
+                    <i data-lucide="user-plus" style="width: 14px; height: 14px;"></i> Asignar Jurados
+                  </button>
+                </td>
+              </tr>
+
+              <tr>
+                <td><strong>DOC-034</strong></td>
+                <td>
+                  <strong>Estrategias pedagógicas interculturales en comunidades Zenú</strong>
+                  <div style="font-size: 0.75rem; color: var(--text-muted);">Cohorte 2023-I • Tesis Doctoral</div>
+                </td>
+                <td>
+                  <div>Andrés Felipe Polo</div>
+                  <div style="font-size: 0.75rem; color: var(--text-muted);">Dir: Dra. Helena Morales (Unicor)</div>
+                </td>
+                <td>
+                  <div style="font-size: 0.75rem;">1. Dr. Mario Ruiz (Unicor) <span class="badge badge-success" style="font-size: 0.65rem;">Aceptó</span></div>
+                  <div style="font-size: 0.75rem;">2. Dra. Clara Hoyos (Ext-UdeA) <span class="badge badge-info" style="font-size: 0.65rem;">En Eval.</span></div>
+                </td>
+                <td>
+                  <div style="font-size: 0.8rem; font-weight: 600;">45%</div>
+                  <div class="progress-bar-bg"><div class="progress-bar-fill" style="width: 45%;"></div></div>
+                </td>
+                <td><span class="badge badge-info">En Evaluación</span></td>
+                <td style="text-align: right;">
+                  <button class="btn btn-sm btn-outline" onclick="showView('view-trazabilidad-grafo')">Trazabilidad</button>
+                </td>
+              </tr>
+
+              <tr>
+                <td><strong>MCIA-044</strong></td>
+                <td>
+                  <strong>Modelado predictivo de inundaciones en la subregión Sabanas</strong>
+                  <div style="font-size: 0.75rem; color: var(--text-muted);">Cohorte 2024-I</div>
+                </td>
+                <td>
+                  <div>Juliana Vergara Polo</div>
+                  <div style="font-size: 0.75rem; color: var(--text-muted);">Dir: Ing. Gabriel Torres</div>
+                </td>
+                <td>
+                  <div style="font-size: 0.75rem;">1. Dr. Carlos Mendoza (Unicor) <span class="badge badge-warning" style="font-size: 0.65rem;">Por Aceptar</span></div>
+                  <div style="font-size: 0.75rem;">2. Dr. Andrés Villa (Ext-UNAL) <span class="badge badge-success" style="font-size: 0.65rem;">Aceptó</span></div>
+                </td>
+                <td>
+                  <div style="font-size: 0.8rem; font-weight: 600;">30%</div>
+                  <div class="progress-bar-bg"><div class="progress-bar-fill" style="width: 30%;"></div></div>
+                </td>
+                <td><span class="badge badge-warning">Esperando Jurado</span></td>
+                <td style="text-align: right;">
+                  <button class="btn btn-sm btn-outline" onclick="showView('view-portal-jurado')">Ver Jurado</button>
+                </td>
+              </tr>
+
+              <tr>
+                <td><strong>DOC-012</strong></td>
+                <td>
+                  <strong>Evaluación de competencias STEAM en educación media rural</strong>
+                  <div style="font-size: 0.75rem; color: var(--text-muted);">Cohorte 2023-II</div>
+                </td>
+                <td>
+                  <div>Camilo Sotomayor</div>
+                  <div style="font-size: 0.75rem; color: var(--text-muted);">Dir: Dr. Vicente Arrieta</div>
+                </td>
+                <td>
+                  <div style="font-size: 0.75rem; color: var(--danger); font-weight: 600;">Conceptos Contradictorios (Aprobado vs Rechazado)</div>
+                </td>
+                <td>
+                  <div style="font-size: 0.8rem; font-weight: 600;">50%</div>
+                  <div class="progress-bar-bg"><div class="progress-bar-fill" style="width: 50%; background: var(--danger);"></div></div>
+                </td>
+                <td><span class="badge badge-danger">Discrepancia (RN-08)</span></td>
+                <td style="text-align: right;">
+                  <button class="btn btn-sm btn-danger" onclick="showView('view-discrepancia')">Resolver</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== VISTA 3: PORTAL DEL JURADO (CU-08) ==================== -->
+    <div id="view-portal-jurado" class="view-container">
+      <div class="card" style="border-top: 4px solid var(--primary);">
+        <div class="card-header">
+          <div>
+            <div class="card-title"><i data-lucide="check-square"></i> Portal de Jurado Evaluador — Notificación de Designación</div>
+            <div class="card-subtitle">Usted ha sido formalmente designado para evaluar la siguiente tesis de posgrado (CU-08)</div>
+          </div>
+          <span class="badge badge-warning" style="font-size: 0.85rem; padding: 0.4rem 0.8rem;">
+            <i data-lucide="clock" style="width: 14px; height: 14px;"></i> Plazo Restante: 4 Días Hábiles (RF-J13)
+          </span>
+        </div>
+
+        <div class="grid-4" style="grid-template-columns: 2fr 1fr; margin-bottom: 1.5rem;">
+          <div>
+            <h3 style="font-size: 1.15rem; margin-bottom: 0.5rem; color: var(--primary);">
+              Modelado predictivo de inundaciones en la subregión Sabanas mediante redes neuronales
+            </h3>
+            <p style="font-size: 0.875rem; color: var(--text-muted); margin-bottom: 1rem;">
+              <strong>Programa:</strong> Maestría en Ciencias Ambientales • <strong>Estudiante:</strong> Juliana Vergara Polo • <strong>Director:</strong> Ing. Gabriel Torres (Unicor)
+            </p>
+            <div class="alert alert-info">
+              <div>
+                <strong>Resumen del Proyecto:</strong> Esta investigación plantea un modelo acoplado hidrodinámico con algoritmos LSTM para pronosticar eventos de desbordamiento en zonas críticas de la cuenca media del Río Sinú, con miras a un sistema de alerta temprana comunitario.
+              </div>
+            </div>
+          </div>
+
+          <div style="background: #f8fafc; border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem;">
+            <div style="font-weight: 600; font-size: 0.85rem; margin-bottom: 0.75rem;">Su Designación:</div>
+            <ul style="font-size: 0.8rem; color: var(--text-muted); padding-left: 1.25rem; line-height: 1.7;">
+              <li>Rol: <strong>Jurado Principal 1</strong></li>
+              <li>Filiación: <strong>Universidad de Córdoba</strong></li>
+              <li>Plazo de evaluación posterior: <strong>15 días hábiles</strong></li>
+              <li>Manuscrito: <strong>142 páginas (PDF)</strong></li>
+            </ul>
+
+            <div style="margin-top: 1.25rem; display: flex; flex-direction: column; gap: 0.5rem;">
+              <button class="btn btn-success" onclick="simularAceptarDesignacion()">
+                <i data-lucide="check-circle-2" style="width: 16px; height: 16px;"></i> Aceptar Designación
+              </button>
+              <button class="btn btn-outline" style="color: var(--danger); border-color: #fca5a5;" onclick="abrirModalDeclinar()">
+                <i data-lucide="x-circle" style="width: 16px; height: 16px;"></i> Declinar Designación
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== VISTA 4: EVALUACIÓN Y RÚBRICA (CU-02) ==================== -->
+    <div id="view-evaluacion-split" class="view-container">
+      <div class="card" style="margin-bottom: 1rem; padding: 0.85rem 1.25rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <strong>Evaluando:</strong> Biorremediación de aguas residuales en la cuenca del Río Sinú
+            <span style="font-size: 0.8rem; color: var(--text-muted); margin-left: 0.5rem;">(Estudiante: Laura Marcela Pérez)</span>
+          </div>
+          <div>
+            <span class="badge badge-info">Modo Evaluación Activo</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="eval-split">
+        <!-- Columna Izquierda: Visor PDF -->
+        <div class="pdf-viewer-mock">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; border-bottom: 1px solid #64748b; padding-bottom: 0.5rem;">
+            <div style="font-size: 0.85rem; font-weight: 600;">Visor de Manuscrito Oficial (PDF)</div>
+            <div style="display: flex; gap: 0.5rem; align-items: center; font-size: 0.8rem;">
+              <span>Página 1 de 118</span>
+              <button class="btn btn-sm btn-outline" style="color: white; border-color: #94a3b8;"><i data-lucide="download" style="width: 12px; height: 12px;"></i> Descargar</button>
+            </div>
+          </div>
+
+          <div class="pdf-page">
+            <h2 style="text-align: center; font-size: 1.25rem; margin-bottom: 1rem;">UNIVERSIDAD DE CÓRDOBA</h2>
+            <h4 style="text-align: center; font-size: 0.95rem; margin-bottom: 2rem; color: #475569;">FACULTAD DE CIENCIAS BÁSICAS • MAESTRÍA EN CIENCIAS AMBIENTALES</h4>
+            
+            <p style="text-align: justify; margin-bottom: 1.5rem;">
+              <strong>CAPÍTULO 1: PLANTEAMIENTO DEL PROBLEMA</strong><br>
+              La contaminación de fuentes hídricas en la cuenca media y baja del Río Sinú ha experimentado un incremento acumulativo en los últimos diez años debido a descargas agrícolas y residuos orgánicos no tratados. La presente investigación analiza la eficacia de macrofitas nativas en sistemas de biofiltración controlada...
+            </p>
+
+            <p style="text-align: justify; background: #fef3c7; padding: 0.5rem; border-left: 3px solid #f59e0b; font-size: 0.85rem; font-family: 'Inter', sans-serif;">
+              💬 <em>Nota del Jurado: Excelente contextualización local, pero se requiere profundizar en el porcentaje de remoción de metales pesados en la sección de metodología.</em>
+            </p>
+          </div>
+        </div>
+
+        <!-- Columna Derecha: Rúbrica y Formulario -->
+        <div class="card" style="height: 100%; overflow-y: auto; margin-bottom: 0;">
+          <div class="card-title" style="font-size: 1.05rem; margin-bottom: 1rem;">
+            <i data-lucide="clipboard-check" style="color: var(--primary);"></i> Rúbrica y Emisión de Concepto (CU-02)
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">1. Rigor Científico y Metodológico (1.0 a 5.0):</label>
+            <input type="number" min="1" max="5" step="0.1" value="4.5" class="form-control" onchange="recalcularNota()">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">2. Relevancia y Aporte al Conocimiento (1.0 a 5.0):</label>
+            <input type="number" min="1" max="5" step="0.1" value="4.8" class="form-control" onchange="recalcularNota()">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">3. Calidad de Redacción, Estilo y Normas (1.0 a 5.0):</label>
+            <input type="number" min="1" max="5" step="0.1" value="4.2" class="form-control" onchange="recalcularNota()">
+          </div>
+
+          <div class="alert alert-success" style="padding: 0.5rem 0.85rem;">
+            <strong>Nota Promediada Ponderada:</strong> <span id="notaPromedio" style="font-size: 1.15rem; font-weight: 700; margin-left: 0.5rem;">4.5 / 5.0</span>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Concepto Evaluativo Final:</label>
+            <select class="form-control" style="font-weight: 600;">
+              <option value="aprobado">✅ APROBADO PARA SUSTENTAR</option>
+              <option value="modificaciones">⚠️ APROBADO CON MODIFICACIONES</option>
+              <option value="rechazado">❌ NO APROBADO / RECHAZADO</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Observaciones Cualitativas Generales:</label>
+            <textarea class="form-control" rows="3" placeholder="Detalle las fortalezas y recomendaciones principales del trabajo..."></textarea>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Adjuntar Manuscrito con Anotaciones (PDF Opcional):</label>
+            <input type="file" class="form-control" accept=".pdf">
+          </div>
+
+          <button class="btn btn-primary" style="width: 100%;" onclick="emitirConceptoOficial()">
+            <i data-lucide="send" style="width: 16px; height: 16px;"></i> Emitir Concepto Oficial
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== VISTA 5: RETROALIMENTACIÓN CAPÍTULOS (CU-06) ==================== -->
+    <div id="view-retroalimentacion" class="view-container">
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title"><i data-lucide="message-square"></i> Hilo de Observaciones Granulares por Capítulo (CU-06)</div>
+            <div class="card-subtitle">Regla de Negocio RN-06: Control estricto de roles en los estados (Pendiente ➔ Atendida ➔ Aprobada-Subsanada)</div>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="alert('Abriendo modal para agregar observación en capítulo...')">
+            <i data-lucide="plus" style="width: 14px; height: 14px;"></i> Nueva Observación
+          </button>
+        </div>
+
+        <div style="display: flex; gap: 0.5rem; margin-bottom: 1.25rem;">
+          <button class="btn btn-sm btn-outline active">Todos (3)</button>
+          <button class="btn btn-sm btn-outline">Capítulo 1: Introducción (1)</button>
+          <button class="btn btn-sm btn-outline">Capítulo 3: Metodología (2)</button>
+        </div>
+
+        <!-- Observación 1: Subsanada -->
+        <div class="card" style="border-left: 4px solid var(--success); margin-bottom: 1rem; background: #fafafa;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+            <div>
+              <span class="badge badge-success"><i data-lucide="check-check" style="width: 12px; height: 12px;"></i> Aprobada - Subsanada</span>
+              <span style="font-size: 0.8rem; color: var(--text-muted); margin-left: 0.5rem;">Capítulo 1 • Página 14 • Jurado: Dr. Carlos Mendoza</span>
+            </div>
+            <span style="font-size: 0.75rem; color: var(--text-muted);">Cerrada el 28 Sep 2026</span>
+          </div>
+          <p style="font-size: 0.875rem; margin-bottom: 0.5rem;">
+            <strong>Observación del Jurado:</strong> Corregir la cita de la norma ISO 14001:2015 en el marco normativo nacional.
+          </p>
+          <div style="background: white; border: 1px solid var(--border); padding: 0.75rem; border-radius: 6px; font-size: 0.825rem;">
+            <strong>Respuesta del Estudiante (Laura Pérez):</strong> Se ajustó la referencia bibliográfica y se adjuntó el cuadro comparativo en la página 15 del manuscrito v2.
+          </div>
+        </div>
+
+        <!-- Observación 2: Atendida (Pendiente de validar por el jurado) -->
+        <div class="card" style="border-left: 4px solid var(--accent); margin-bottom: 1rem;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+            <div>
+              <span class="badge badge-info"><i data-lucide="clock" style="width: 12px; height: 12px;"></i> Atendida por Estudiante (En Revisión)</span>
+              <span style="font-size: 0.8rem; color: var(--text-muted); margin-left: 0.5rem;">Capítulo 3 • Sección 3.2 • Jurado: Dra. Clara Hoyos</span>
+            </div>
+            <span style="font-size: 0.75rem; color: var(--text-muted);">Enviada hoy 10:15 AM</span>
+          </div>
+          <p style="font-size: 0.875rem; margin-bottom: 0.5rem;">
+            <strong>Observación del Jurado:</strong> Especificar los límites de detección del espectrofotómetro de absorción atómica utilizado en los ensayos.
+          </p>
+          <div style="background: #f0f9ff; border: 1px solid #bae6fd; padding: 0.75rem; border-radius: 6px; font-size: 0.825rem; margin-bottom: 0.75rem;">
+            <strong>Respuesta del Estudiante:</strong> Se incorporó la Tabla 4 con los límites de detección (LOD: 0.002 ppm) y de cuantificación (LOQ: 0.006 ppm). <a href="#" style="color: var(--accent); font-weight: 600;">Ver fe_de_erratas_p34.pdf</a>
+          </div>
+          <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
+            <button class="btn btn-sm btn-outline" style="color: var(--danger);" onclick="alert('Observación reabierta a estado Pendiente para nuevas correcciones.')">Reabrir (Insuficiente)</button>
+            <button class="btn btn-sm btn-success" onclick="alert('¡Observación aprobada y subsanada con éxito según RN-06!')"><i data-lucide="check" style="width: 14px; height: 14px;"></i> Aprobar Subsanación</button>
+          </div>
+        </div>
+
+        <!-- Observación 3: Pendiente -->
+        <div class="card" style="border-left: 4px solid var(--warning); margin-bottom: 1rem;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+            <div>
+              <span class="badge badge-warning"><i data-lucide="alert-circle" style="width: 12px; height: 12px;"></i> Pendiente de Atención</span>
+              <span style="font-size: 0.8rem; color: var(--text-muted); margin-left: 0.5rem;">Capítulo 3 • Metodología • Jurado: Dr. Carlos Mendoza</span>
+            </div>
+            <span style="font-size: 0.75rem; color: var(--text-muted);">Emitida hace 2 días</span>
+          </div>
+          <p style="font-size: 0.875rem; margin-bottom: 0.5rem;">
+            <strong>Observación del Jurado:</strong> Falta justificar el tamaño muestral de los 15 puntos de monitoreo a lo largo del río.
+          </p>
+          <div style="display: flex; justify-content: flex-end;">
+            <button class="btn btn-sm btn-primary" onclick="alert('Estudiante: Aquí puede redactar la justificación y adjuntar la versión corregida.')">
+              <i data-lucide="reply" style="width: 14px; height: 14px;"></i> Responder y Marcar como Atendida
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== VISTA 6: DISCREPANCIA & DIRIMENTE (CU-05) ==================== -->
+    <div id="view-discrepancia" class="view-container">
+      <div class="card" style="border-top: 4px solid var(--danger);">
+        <div class="card-header">
+          <div>
+            <div class="card-title" style="color: var(--danger);"><i data-lucide="git-merge"></i> Gestión de Discrepancia Evaluativa y Designación de Dirimente (CU-05)</div>
+            <div class="card-subtitle">Regla de Negocio RN-08: Bifurcación automática a EN_DISCREPANCIA_REQUIERE_DIRIMENTE</div>
+          </div>
+          <span class="badge badge-danger">Requiere Tercer Jurado</span>
+        </div>
+
+        <div class="alert alert-danger">
+          <i data-lucide="alert-octagon" style="width: 22px; height: 22px; flex-shrink: 0;"></i>
+          <div>
+            <strong>Discrepancia Irreconciliable Detectada:</strong> Los conceptos emitidos por los jurados principales son divergentes. Para garantizar el debido proceso académico y la rigurosidad científica, el Coordinador debe designar un <strong>Tercer Jurado Dirimente</strong> que emitirá la decisión definitoria.
+          </div>
+        </div>
+
+        <div class="grid-4" style="grid-template-columns: 1fr 1fr; margin-bottom: 1.5rem;">
+          <!-- Jurado 1 -->
+          <div class="card" style="border: 1px solid var(--border); margin-bottom: 0;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+              <strong>Jurado 1: Dr. Pedro Almanza</strong>
+              <span class="badge badge-success">Aprobado (Nota: 4.6)</span>
+            </div>
+            <p style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.6;">
+              <em>"El trabajo presenta una sólida base empírica, experimentos reproducibles y un análisis estadístico robusto. Se recomienda programar sustentación sin mayores dilaciones."</em>
+            </p>
+          </div>
+
+          <!-- Jurado 2 -->
+          <div class="card" style="border: 1px solid var(--border); margin-bottom: 0;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+              <strong>Jurado 2: Dra. Beatriz Quintana</strong>
+              <span class="badge badge-danger">Rechazado (Nota: 2.3)</span>
+            </div>
+            <p style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.6;">
+              <em>"Se identifican fallas críticas en el muestreo de control y el modelo econométrico no converge adecuadamente. El documento no cumple con los estándares mínimos para defensa pública."</em>
+            </p>
+          </div>
+        </div>
+
+        <!-- Formulario Dirimente -->
+        <div class="card" style="background: #f8fafc;">
+          <div class="card-title" style="font-size: 1rem; margin-bottom: 1rem;">
+            <i data-lucide="user-check"></i> Designación de Jurado Dirimente
+          </div>
+          <div class="grid-4" style="grid-template-columns: 2fr 1fr;">
+            <div class="form-group">
+              <label class="form-label">Seleccionar Docente Especialista (Unicórdoba o Externo):</label>
+              <select class="form-control">
+                <option value="">Seleccione un profesor idóneo sin conflicto de interés...</option>
+                <option value="1">Dr. Álvaro Restrepo (Departamento de Química - Unicor)</option>
+                <option value="2">Dra. Mónica Salazar (Instituto de Biotecnología - Unicor)</option>
+                <option value="3">Dr. Fernando Correa (Universidad del Valle - Externo)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Plazo para Emitir Laudo Dirimente:</label>
+              <input type="number" class="form-control" value="8" min="3" max="15">
+            </div>
+          </div>
+          <button class="btn btn-danger" onclick="alert('¡Jurado dirimente designado exitosamente! Notificación enviada con acceso prioritario.')">
+            <i data-lucide="shield-alert" style="width: 16px; height: 16px;"></i> Notificar y Asignar Jurado Dirimente
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== VISTA 7: ACTA Y FIRMA ELECTRÓNICA (CU-04) ==================== -->
+    <div id="view-acta-firma" class="view-container">
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title"><i data-lucide="award"></i> Acta Final de Sustentación & Confirmación Electrónica Simple</div>
+            <div class="card-subtitle">Cumplimiento de requisitos RF-J10 (Confirmación electrónica) y RNF-04 (Inmutabilidad post-firma)</div>
+          </div>
+          <span class="badge badge-success"><i data-lucide="lock" style="width: 12px; height: 12px;"></i> Acta Lista para Firma</span>
+        </div>
+
+        <div style="background: white; border: 2px solid var(--border); padding: 2rem; border-radius: var(--radius); margin-bottom: 1.5rem;">
+          <div style="text-align: center; border-bottom: 2px solid var(--border); padding-bottom: 1.5rem; margin-bottom: 1.5rem;">
+            <h2 style="font-size: 1.25rem; font-weight: 700; color: var(--primary);">UNIVERSIDAD DE CÓRDOBA</h2>
+            <h4 style="font-size: 0.95rem; font-weight: 600;">ACTA OFICIAL DE SUSTENTACIÓN DE TRABAJO DE GRADO DE POSGRADO</h4>
+            <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.35rem;">Acta N.º MCIA-2026-089-DEF</div>
+          </div>
+
+          <div class="grid-4" style="grid-template-columns: 1fr 1fr; font-size: 0.875rem; margin-bottom: 1.5rem;">
+            <div>
+              <p><strong>Candidata:</strong> Laura Marcela Pérez (CC: 1.067.890.123)</p>
+              <p><strong>Programa:</strong> Maestría en Ciencias Ambientales</p>
+              <p><strong>Título:</strong> Biorremediación de aguas residuales en la cuenca del Río Sinú</p>
+            </div>
+            <div>
+              <p><strong>Fecha de Sustentación:</strong> 02 de Octubre de 2026 • 10:00 AM</p>
+              <p><strong>Modalidad:</strong> Híbrida (Auditorio Central y Google Meet)</p>
+              <p><strong>Calificación Definitiva:</strong> <span style="font-size: 1.15rem; font-weight: 700; color: var(--primary);">4.8 / 5.0</span> (Aprobada con Mención Meritoria)</p>
+            </div>
+          </div>
+
+          <!-- Panel de Firmas -->
+          <div style="border-top: 1px solid var(--border); padding-top: 1.5rem;">
+            <div style="font-weight: 600; font-size: 0.95rem; margin-bottom: 1rem;">Registro de Confirmación y Firmas Electrónicas (RF-J10):</div>
+            
+            <div class="table-container" style="margin-bottom: 1.25rem;">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Participante</th>
+                    <th>Rol</th>
+                    <th>Estado de Confirmación</th>
+                    <th>Timestamp & IP</th>
+                    <th>Hash de Firma</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Dr. Carlos Mendoza</td>
+                    <td>Jurado Evaluador 1</td>
+                    <td><span class="badge badge-success"><i data-lucide="check" style="width: 12px; height: 12px;"></i> Firmado Electrónicamente</span></td>
+                    <td style="font-size: 0.75rem;">2026-10-02 11:20:15 (186.84.90.12)</td>
+                    <td><span class="hash-badge">a8f9c4...7b21</span></td>
+                  </tr>
+                  <tr>
+                    <td>Dra. Clara Hoyos</td>
+                    <td>Jurado Evaluador 2</td>
+                    <td><span class="badge badge-success"><i data-lucide="check" style="width: 12px; height: 12px;"></i> Firmado Electrónicamente</span></td>
+                    <td style="font-size: 0.75rem;">2026-10-02 11:22:40 (190.25.14.88)</td>
+                    <td><span class="hash-badge">c3d19e...45f0</span></td>
+                  </tr>
+                  <tr>
+                    <td>Dr. Roberto Flórez</td>
+                    <td>Coordinador de Posgrado</td>
+                    <td><span class="badge badge-warning" id="coordFirmaBadge"><i data-lucide="clock" style="width: 12px; height: 12px;"></i> Pendiente de Firma</span></td>
+                    <td style="font-size: 0.75rem;" id="coordFirmaDate">—</td>
+                    <td><span class="hash-badge" id="coordFirmaHash">Pendiente</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Acción de Firma del Coordinador -->
+            <div id="panelAccionFirma" style="background: #f8fafc; border: 1px solid var(--border); padding: 1.25rem; border-radius: 8px;">
+              <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.75rem;">
+                <input type="checkbox" id="checkLegal" style="width: 18px; height: 18px; cursor: pointer;">
+                <label for="checkLegal" style="font-size: 0.85rem; cursor: pointer;">
+                  Declaro bajo la gravedad de juramento que la deliberación académica concluyó conforme a los estatutos de posgrado de la Universidad de Córdoba y confirmo electrónicamente el contenido inalterable de esta acta.
+                </label>
+              </div>
+              <button class="btn btn-primary" onclick="firmarActaCoordinador()">
+                <i data-lucide="lock" style="width: 16px; height: 16px;"></i> Firmar y Sellar Acta Inmutablemente (RNF-04)
+              </button>
+            </div>
+
+            <div id="panelActaSellada" style="display: none; background: #f0fdf4; border: 1px solid #bbf7d0; padding: 1.25rem; border-radius: 8px; text-align: center;">
+              <div style="color: var(--success); font-weight: 700; font-size: 1.05rem; margin-bottom: 0.35rem;">
+                ✔ ACTA SELLADA E INMUTABLE (RNF-04)
+              </div>
+              <p style="font-size: 0.85rem; color: #166534; margin-bottom: 0.75rem;">
+                Documento certificado con Hash Criptográfico SHA-256: <code>e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855</code>
+              </p>
+              <button class="btn btn-outline" style="background: white;" onclick="alert('Descargando copia legal certificada en PDF...')">
+                <i data-lucide="download" style="width: 16px; height: 16px;"></i> Descargar Copia Oficial en PDF
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== VISTA 8: GRAFO DE TRAZABILIDAD (CU-07) ==================== -->
+    <div id="view-trazabilidad-grafo" class="view-container">
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title"><i data-lucide="network"></i> Grafo Interactivo de Trazabilidad (Vue Flow / Cytoscape.js)</div>
+            <div class="card-subtitle">Visualización de ruta crítica, estados transitados y auditoría de la tesis (RF-C16, RF-P02)</div>
+          </div>
+          <div style="font-size: 0.85rem; font-weight: 600; color: var(--primary);">Tesis: MCIA-089 (85% de avance)</div>
+        </div>
+
+        <div class="graph-canvas">
+          <!-- SVG Conexiones -->
+          <svg style="position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none;">
+            <defs>
+              <marker id="arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-reverse">
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="#94a3b8"/>
+              </marker>
+            </defs>
+            <line x1="140" y1="240" x2="300" y2="240" stroke="#16a34a" stroke-width="3" stroke-dasharray="4" marker-end="url(#arrow)" />
+            <line x1="430" y1="240" x2="590" y2="240" stroke="#16a34a" stroke-width="3" marker-end="url(#arrow)" />
+            <line x1="720" y1="240" x2="880" y2="240" stroke="#16a34a" stroke-width="3" marker-end="url(#arrow)" />
+            <line x1="1010" y1="240" x2="1170" y2="240" stroke="#0284c7" stroke-width="3" marker-end="url(#arrow)" />
+          </svg>
+
+          <!-- Nodos del Grafo -->
+          <div class="node-item completed" style="left: 40px; top: 200px;" onclick="mostrarInfoNodo('Radicación de Tesis', '2026-08-10', 'Estudiante Laura Pérez', 'Documento inicial PDF cargado con aval de director.')">
+            <i data-lucide="check" style="width: 14px; height: 14px; color: var(--success);"></i>
+            <div style="font-weight: 700; font-size: 0.85rem;">1. Radicación</div>
+            <div style="font-size: 0.7rem; color: var(--text-muted);">10% • 10 Ago 2026</div>
+          </div>
+
+          <div class="node-item completed" style="left: 300px; top: 200px;" onclick="mostrarInfoNodo('Asignación de Jurados', '2026-08-18', 'Coordinador Roberto Flórez', 'Designados 2 jurados: Dr. Mendoza (Unicor) y Dra. Hoyos (UdeA).')">
+            <i data-lucide="check" style="width: 14px; height: 14px; color: var(--success);"></i>
+            <div style="font-weight: 700; font-size: 0.85rem;">2. Jurados Asignados</div>
+            <div style="font-size: 0.7rem; color: var(--text-muted);">25% • 18 Ago 2026</div>
+          </div>
+
+          <div class="node-item completed" style="left: 590px; top: 200px;" onclick="mostrarInfoNodo('Evaluación de Jurados', '2026-09-12', 'Jurados Evaluadores', 'Ambos jurados aceptaron y emitieron conceptos aprobatorios con modificaciones.')">
+            <i data-lucide="check" style="width: 14px; height: 14px; color: var(--success);"></i>
+            <div style="font-weight: 700; font-size: 0.85rem;">3. En Evaluación</div>
+            <div style="font-size: 0.7rem; color: var(--text-muted);">45% • 12 Sep 2026</div>
+          </div>
+
+          <div class="node-item completed" style="left: 880px; top: 200px;" onclick="mostrarInfoNodo('Subsanación de Observaciones', '2026-09-28', 'Estudiante & Jurados', '3 observaciones cerradas y aprobadas según RN-06.')">
+            <i data-lucide="check" style="width: 14px; height: 14px; color: var(--success);"></i>
+            <div style="font-weight: 700; font-size: 0.85rem;">4. Subsanaciones</div>
+            <div style="font-size: 0.7rem; color: var(--text-muted);">75% • 28 Sep 2026</div>
+          </div>
+
+          <div class="node-item active" style="left: 1170px; top: 200px;" onclick="mostrarInfoNodo('Sustentación & Acta', '2026-10-02', 'Tribunal de Grado', 'Sustentación programada y acta en proceso de confirmación electrónica.')">
+            <i data-lucide="refresh-cw" style="width: 14px; height: 14px; color: var(--accent);"></i>
+            <div style="font-weight: 700; font-size: 0.85rem;">5. Sustentación</div>
+            <div style="font-size: 0.7rem; color: var(--text-muted);">85% • En curso</div>
+          </div>
+        </div>
+
+        <div id="drawerInfoNodo" class="alert alert-info" style="margin-top: 1.25rem; display: none;">
+          <i data-lucide="info" style="width: 20px; height: 20px; flex-shrink: 0;"></i>
+          <div>
+            <strong id="nodoTitulo">Detalle del Hito</strong>
+            <div id="nodoDetalle" style="font-size: 0.85rem; margin-top: 0.2rem;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== VISTA 9: MAPA DE NAVEGACIÓN & RBAC ==================== -->
+    <div id="view-mapa-navegacion" class="view-container">
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title"><i data-lucide="map"></i> Arquitectura de Información y Matriz de Acceso (RBAC)</div>
+            <div class="card-subtitle">Restricciones de usuario y trazabilidad entre requisitos y pantallas en Nuxt 4</div>
+          </div>
+        </div>
+
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Pantalla / Módulo</th>
+                <th>Ruta Nuxt</th>
+                <th>Coordinador</th>
+                <th>Jurado Interno</th>
+                <th>Jurado Externo</th>
+                <th>Estudiante</th>
+                <th>Restricciones y Reglas</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Dashboard Coordinación</strong></td>
+                <td><code>/coordinador</code></td>
+                <td><span class="badge badge-success">Total</span></td>
+                <td><span class="badge badge-danger">Bloqueado</span></td>
+                <td><span class="badge badge-danger">Bloqueado</span></td>
+                <td><span class="badge badge-danger">Bloqueado</span></td>
+                <td>Guard <code>role-coordinador.ts</code></td>
+              </tr>
+              <tr>
+                <td><strong>Asignación de Jurados (CU-01)</strong></td>
+                <td><code>/coordinador/tesis/[id]/asignar</code></td>
+                <td><span class="badge badge-success">Total</span></td>
+                <td><span class="badge badge-danger">Bloqueado</span></td>
+                <td><span class="badge badge-danger">Bloqueado</span></td>
+                <td><span class="badge badge-danger">Bloqueado</span></td>
+                <td>Validación RN-01 (conflicto) y RF-C13 (2 jurados, al menos 1 Unicor)</td>
+              </tr>
+              <tr>
+                <td><strong>Aceptar / Declinar (CU-08)</strong></td>
+                <td><code>/jurado/evaluacion/[id]</code></td>
+                <td><span class="badge badge-danger">Bloqueado</span></td>
+                <td><span class="badge badge-success">Asignadas</span></td>
+                <td><span class="badge badge-success">Vía Token</span></td>
+                <td><span class="badge badge-danger">Bloqueado</span></td>
+                <td>Plazo configurable en días hábiles (RF-J13)</td>
+              </tr>
+              <tr>
+                <td><strong>Evaluación & Rúbrica (CU-02)</strong></td>
+                <td><code>/jurado/evaluacion/[id]/visor</code></td>
+                <td><span class="badge badge-info">Solo Lectura</span></td>
+                <td><span class="badge badge-success">Si Aceptó</span></td>
+                <td><span class="badge badge-success">Si Aceptó</span></td>
+                <td><span class="badge badge-danger">Bloqueado</span></td>
+                <td>Inmutabilidad del concepto una vez emitido</td>
+              </tr>
+              <tr>
+                <td><strong>Retroalimentación por Capítulos (CU-06)</strong></td>
+                <td><code>/jurado/retroalimentacion/[id]</code></td>
+                <td><span class="badge badge-info">Consolidado</span></td>
+                <td><span class="badge badge-success">Crea & Cierra</span></td>
+                <td><span class="badge badge-success">Crea & Cierra</span></td>
+                <td><span class="badge badge-warning">Solo Atiende</span></td>
+                <td>RN-06: Estudiante solo pasa a 'Atendida', Jurado es el único que aprueba</td>
+              </tr>
+              <tr>
+                <td><strong>Discrepancia & Dirimente (CU-05)</strong></td>
+                <td><code>/coordinador/tesis/[id]/discrepancia</code></td>
+                <td><span class="badge badge-success">Total</span></td>
+                <td><span class="badge badge-danger">Bloqueado</span></td>
+                <td><span class="badge badge-danger">Bloqueado</span></td>
+                <td><span class="badge badge-danger">Bloqueado</span></td>
+                <td>RN-08: Se activa si hay conceptos contradictorios</td>
+              </tr>
+              <tr>
+                <td><strong>Acta & Firma Electrónica (CU-04)</strong></td>
+                <td><code>/coordinador/actas/[id]</code></td>
+                <td><span class="badge badge-success">Firma & Sella</span></td>
+                <td><span class="badge badge-success">Firma Jurado</span></td>
+                <td><span class="badge badge-success">Firma Jurado</span></td>
+                <td><span class="badge badge-info">Solo Consulta</span></td>
+                <td>RF-J10: Checkbox + Hash SHA-256 + Inmutabilidad RNF-04</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ==================== MODAL DE ASIGNACIÓN DE JURADOS (CU-01) ==================== -->
+  <div id="modalAsignarJurados" class="modal-overlay">
+    <div class="modal-box">
+      <div class="modal-header">
+        <div style="font-weight: 700; font-size: 1.1rem; display: flex; align-items: center; gap: 0.5rem;">
+          <i data-lucide="user-plus" style="color: var(--primary);"></i> Asignación Oficial de Jurados (CU-01)
+        </div>
+        <button onclick="cerrarModalAsignar()" style="background: none; border: none; cursor: pointer; color: var(--text-muted);"><i data-lucide="x"></i></button>
+      </div>
+
+      <div class="modal-body">
+        <div class="alert alert-info" style="margin-bottom: 1rem;">
+          <div>
+            <div style="font-weight: 600;" id="modalTesisTitulo">Título de la Tesis</div>
+            <div style="font-size: 0.8rem; margin-top: 0.2rem;">
+              Estudiante: <span id="modalTesisAutor"></span> • Director: <span id="modalTesisDirector" style="font-weight: 600;">Dr. Roberto Gómez</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Banner de validación dinámica -->
+        <div id="alertaConflictoInteres" class="alert alert-danger" style="display: none;">
+          <i data-lucide="alert-octagon" style="width: 20px; height: 20px; flex-shrink: 0;"></i>
+          <div>
+            <strong>¡Bloqueo por Conflicto de Interés (RN-01)!</strong><br>
+            El docente seleccionado figura como Director/Codirector de este trabajo. No puede actuar como jurado evaluador.
+          </div>
+        </div>
+
+        <div id="alertaUnicorRequerido" class="alert alert-warning" style="display: none;">
+          <i data-lucide="alert-triangle" style="width: 20px; height: 20px; flex-shrink: 0;"></i>
+          <div>
+            <strong>Regla de Filiación (RF-C13):</strong> Se requiere que al menos uno de los dos jurados evaluadores pertenezca a la <strong>Universidad de Córdoba</strong>.
+          </div>
+        </div>
+
+        <!-- Jurado 1 -->
+        <div class="form-group">
+          <label class="form-label">Jurado 1 (Docente Unicórdoba Requerido):</label>
+          <select id="selectJurado1" class="form-control" onchange="validarReglasAsignacion()">
+            <option value="">Seleccione jurado...</option>
+            <option value="prof_gomez">Dr. Roberto Gómez (Departamento de Biología - Director)</option>
+            <option value="prof_mendoza">Dr. Carlos Mendoza (Departamento de Ingeniería Ambiental - Unicor)</option>
+            <option value="prof_ruiz">Dr. Mario Ruiz (Departamento de Posgrados - Unicor)</option>
+          </select>
+        </div>
+
+        <!-- Jurado 2 -->
+        <div class="form-group">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
+            <label class="form-label" style="margin-bottom: 0;">Jurado 2:</label>
+            <label style="font-size: 0.8rem; display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
+              <input type="checkbox" id="checkJuradoExterno" onchange="toggleJuradoExterno(this.checked)"> Jurado Externo (RF-C14)
+            </label>
+          </div>
+          
+          <div id="wrapperJurado2Interno">
+            <select id="selectJurado2" class="form-control" onchange="validarReglasAsignacion()">
+              <option value="">Seleccione jurado interno...</option>
+              <option value="prof_almanza">Dr. Pedro Almanza (Facultad de Ciencias Básicas - Unicor)</option>
+              <option value="prof_salazar">Dra. Mónica Salazar (Facultad de Educación - Unicor)</option>
+            </select>
+          </div>
+
+          <!-- Campos Jurado Externo -->
+          <div id="wrapperJurado2Externo" style="display: none; background: #f8fafc; border: 1px solid var(--border); padding: 1rem; border-radius: 6px; margin-top: 0.5rem;">
+            <div class="form-group" style="margin-bottom: 0.75rem;">
+              <label class="form-label">Nombre Completo del Jurado Externo:</label>
+              <input type="text" id="extNombre" class="form-control" placeholder="Ej. Dra. Clara Hoyos">
+            </div>
+            <div class="grid-4" style="grid-template-columns: 1fr 1fr; margin-bottom: 0.75rem;">
+              <div>
+                <label class="form-label">Institución de Filiación:</label>
+                <input type="text" id="extInstitucion" class="form-control" placeholder="Ej. Universidad de Antioquia">
+              </div>
+              <div>
+                <label class="form-label">País:</label>
+                <input type="text" id="extPais" class="form-control" placeholder="Colombia">
+              </div>
+            </div>
+            <div>
+              <label class="form-label">Correo Electrónico (Para envío de Magic Token RF-J14):</label>
+              <input type="email" id="extEmail" class="form-control" placeholder="clara.hoyos@udea.edu.co">
+            </div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Plazo Límite de Aceptación (Días Hábiles):</label>
+          <input type="number" class="form-control" value="8" min="3" max="15">
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="cerrarModalAsignar()">Cancelar</button>
+        <button id="btnConfirmarAsignacion" class="btn btn-primary" onclick="guardarAsignacionJurados()">
+          <i data-lucide="check" style="width: 16px; height: 16px;"></i> Confirmar y Notificar Jurados
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Lucide icons render script & App logic -->
+  <script>
+    // Inicializar iconos de Lucide
+    lucide.createIcons();
+
+    // Navegación entre Vistas
+    function showView(viewId) {
+      document.querySelectorAll('.view-container').forEach(v => v.classList.remove('active'));
+      const target = document.getElementById(viewId);
+      if (target) {
+        target.classList.add('active');
+      }
+
+      // Actualizar botón de tab activo
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        if (btn.getAttribute('onclick')?.includes(viewId)) {
+          btn.classList.add('active');
+        } else {
+          btn.classList.remove('active');
+        }
+      });
+      lucide.createIcons();
+    }
+
+    // Selector de Rol
+    function switchRole(role) {
+      if (role === 'coordinador') {
+        showView('view-dash-coordinador');
+      } else if (role === 'jurado' || role === 'jurado-ext') {
+        showView('view-portal-jurado');
+      } else if (role === 'estudiante') {
+        showView('view-retroalimentacion');
+      }
+    }
+
+    // Modal Asignar Jurados
+    function openModalAsignar(codigo, titulo, autor, director) {
+      document.getElementById('modalTesisTitulo').innerText = `${codigo} — ${titulo}`;
+      document.getElementById('modalTesisAutor').innerText = autor;
+      document.getElementById('modalTesisDirector').innerText = director;
+      document.getElementById('modalAsignarJurados').classList.add('active');
+      validarReglasAsignacion();
+      lucide.createIcons();
+    }
+
+    function cerrarModalAsignar() {
+      document.getElementById('modalAsignarJurados').classList.remove('active');
+    }
+
+    function toggleJuradoExterno(isExternal) {
+      document.getElementById('wrapperJurado2Interno').style.display = isExternal ? 'none' : 'block';
+      document.getElementById('wrapperJurado2Externo').style.display = isExternal ? 'block' : 'none';
+      validarReglasAsignacion();
+    }
+
+    // Validación de Reglas de Negocio en Vivo (RN-01 y RF-C13)
+    function validarReglasAsignacion() {
+      const j1 = document.getElementById('selectJurado1').value;
+      const isExt = document.getElementById('checkJuradoExterno').checked;
+      const j2 = isExt ? 'externo' : document.getElementById('selectJurado2').value;
+      const alertaConflicto = document.getElementById('alertaConflictoInteres');
+      const alertaUnicor = document.getElementById('alertaUnicorRequerido');
+      const btnConfirmar = document.getElementById('btnConfirmarAsignacion');
+
+      let isValid = true;
+
+      // RN-01: Conflicto de interés con el Director
+      if (j1 === 'prof_gomez') {
+        alertaConflicto.style.display = 'flex';
+        isValid = false;
+      } else {
+        alertaConflicto.style.display = 'none';
+      }
+
+      // No permitir el mismo jurado en ambas casillas
+      if (j1 && j2 && j1 === j2) {
+        isValid = false;
+      }
+
+      if (!j1 || (!j2 && !isExt)) {
+        isValid = false;
+      }
+
+      btnConfirmar.disabled = !isValid;
+      btnConfirmar.style.opacity = isValid ? '1' : '0.5';
+      btnConfirmar.style.cursor = isValid ? 'pointer' : 'not-allowed';
+      lucide.createIcons();
+    }
+
+    function guardarAsignacionJurados() {
+      alert('¡Asignación exitosa! Se han creado los registros en la colección AsignacionJurado, la tesis pasó al estado JURADOS_ASIGNADOS y se enviaron las notificaciones con tokens seguros (RF-J14).');
+      cerrarModalAsignar();
+      showView('view-bandeja-tesis');
+    }
+
+    // Simulación de Aceptar Designación (CU-08)
+    function simularAceptarDesignacion() {
+      alert('¡Designación Aceptada! Ha quedado formalmente facultado para evaluar. La tesis se actualizó a estado EN_EVALUACION.');
+      showView('view-evaluacion-split');
+    }
+
+    function abrirModalDeclinar() {
+      const motivo = prompt('Por favor ingrese el motivo obligatorio de declinación (máximo 500 caracteres):');
+      if (motivo) {
+        alert('Declinación registrada. La coordinación ha sido notificada para la reasignación de la vacante.');
+        showView('view-dash-coordinador');
+      }
+    }
+
+    // Recalcular Nota Ponderada
+    function recalcularNota() {
+      const inputs = document.querySelectorAll('#view-evaluacion-split input[type="number"]');
+      let suma = 0;
+      inputs.forEach(i => suma += parseFloat(i.value || 0));
+      const prom = (suma / inputs.length).toFixed(1);
+      document.getElementById('notaPromedio').innerText = `${prom} / 5.0`;
+    }
+
+    function emitirConceptoOficial() {
+      if (confirm('¿Está seguro de emitir el concepto oficial? Esta acción es inmutable y cerrará su formulario de evaluación.')) {
+        alert('¡Concepto evaluativo emitido y firmado con éxito! El estado de la evaluación cambió a CONCEPTO_EMITIDO.');
+        showView('view-retroalimentacion');
+      }
+    }
+
+    // Firma Electrónica del Coordinador (CU-04 / RF-J10)
+    function firmarActaCoordinador() {
+      const check = document.getElementById('checkLegal');
+      if (!check.checked) {
+        alert('Debe marcar la casilla de declaración legal para proceder con la firma electrónica.');
+        return;
+      }
+
+      document.getElementById('panelAccionFirma').style.display = 'none';
+      document.getElementById('panelActaSellada').style.display = 'block';
+
+      // Actualizar fila en la tabla
+      document.getElementById('coordFirmaBadge').className = 'badge badge-success';
+      document.getElementById('coordFirmaBadge').innerHTML = '<i data-lucide="check" style="width: 12px; height: 12px;"></i> Firmado Electrónicamente';
+      document.getElementById('coordFirmaDate').innerText = '2026-10-02 11:28:02 (186.84.90.1)';
+      document.getElementById('coordFirmaHash').innerText = 'f9a20b...11e7';
+      lucide.createIcons();
+    }
+
+    // Información de Nodos en Grafo (CU-07)
+    function mostrarInfoNodo(titulo, fecha, actor, descripcion) {
+      const drawer = document.getElementById('drawerInfoNodo');
+      document.getElementById('nodoTitulo').innerText = `${titulo} (${fecha})`;
+      document.getElementById('nodoDetalle').innerHTML = `<strong>Responsable:</strong> ${actor}<br><strong>Detalle:</strong> ${descripcion}`;
+      drawer.style.display = 'flex';
+      lucide.createIcons();
+    }
+  </script>
+</body>
+</html>

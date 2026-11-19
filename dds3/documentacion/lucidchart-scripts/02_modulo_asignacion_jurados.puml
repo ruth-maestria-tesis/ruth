@@ -1,0 +1,44 @@
+@startuml
+title Módulo 1: Asignación, Aceptación y Discrepancia de Jurados (CU-01, CU-08, CU-05)
+left to right direction
+skinparam packageStyle rectangle
+
+actor "Coordinador de Posgrados" as Coord
+actor "Jurado Evaluador\n(Interno / Externo)" as Jurado
+actor "Sistema de Alertas" as CronSys
+
+rectangle "Módulo 1: Asignación y Gestión de Jurados" {
+  usecase "CU-01: Asignar Jurados a Tesis" as CU01
+  usecase "Validar Paridad (Exactamente 2 Jurados)" as Val_Paridad
+  usecase "Validar Mínimo 1 Jurado Unicórdoba (RF-C13)" as Val_Unicor
+  usecase "Verificar Conflicto de Interés (RN-01)" as Val_Conflicto
+  usecase "Registrar Datos Jurado Externo (RF-C14)" as Ext_Datos
+
+  usecase "CU-08: Aceptar o Declinar Designación" as CU08
+  usecase "Validar Plazo de Aceptación (RF-J13)" as Val_Plazo
+  usecase "Registrar Causal de Rechazo" as Ext_Rechazo
+  usecase "Acceso Express por Token Seguro (RF-J14)" as Inc_Token
+
+  usecase "CU-05: Gestionar Discrepancia y Dirimente (RN-08)" as CU05
+  usecase "Designar Tercer Jurado Dirimente" as Inc_Dirimente
+}
+
+' Flujos CU-01
+Coord --> CU01
+CU01 ..> Val_Paridad : <<include>>
+CU01 ..> Val_Unicor : <<include>>
+CU01 ..> Val_Conflicto : <<include>>
+CU01 ..> Ext_Datos : <<extend>>
+
+' Flujos CU-08
+Jurado --> CU08
+CU08 ..> Val_Plazo : <<include>>
+CU08 ..> Inc_Token : <<include>>
+CU08 ..> Ext_Rechazo : <<extend>>
+CronSys --> Val_Plazo
+
+' Flujos CU-05
+Coord --> CU05
+CU05 ..> Inc_Dirimente : <<include>>
+
+@enduml

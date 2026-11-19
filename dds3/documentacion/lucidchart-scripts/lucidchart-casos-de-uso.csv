@@ -1,0 +1,31 @@
+Id,Name,Shape Library,Shape Type,Text Area 1,Line Source,Line Destination,Line Style
+1,Actor,flowchart,actor,Coordinador de Posgrados,,,
+2,Actor,flowchart,actor,Jurado Interno (Unicórdoba),,,
+3,Actor,flowchart,actor,Jurado Externo,,,
+4,Actor,flowchart,actor,Estudiante / Tesista,,,
+5,Actor,flowchart,actor,Sistema Cron / Alertas,,,
+10,UseCase,flowchart,terminator,CU-01: Asignar Jurados a Tesis,1,10,solid
+11,UseCase,flowchart,terminator,CU-08: Aceptar o Declinar Designación,2,11,solid
+12,UseCase,flowchart,terminator,CU-05: Gestionar Discrepancia y Dirimente,1,12,solid
+13,UseCase,flowchart,terminator,CU-02: Evaluar Tesis y Emitir Concepto,2,13,solid
+14,UseCase,flowchart,terminator,CU-06: Retroalimentación por Capítulos,2,14,solid
+15,UseCase,flowchart,terminator,CU-03: Programar y Confirmar Sustentación,1,15,solid
+16,UseCase,flowchart,terminator,CU-04: Diligenciar y Confirmar Acta,1,16,solid
+17,UseCase,flowchart,terminator,CU-07: Monitorear Progreso y Grafo,1,17,solid
+18,UseCase,flowchart,terminator,CU-09: Exportar Reportes y Auditoría,1,18,solid
+19,UseCase,flowchart,terminator,CU-08: Aceptar o Declinar Designación,3,11,solid
+20,UseCase,flowchart,terminator,CU-02: Evaluar Tesis y Emitir Concepto,3,13,solid
+21,UseCase,flowchart,terminator,CU-06: Retroalimentación por Capítulos,3,14,solid
+22,UseCase,flowchart,terminator,CU-03: Programar y Confirmar Sustentación,2,15,solid
+23,UseCase,flowchart,terminator,CU-04: Diligenciar y Confirmar Acta,2,16,solid
+24,UseCase,flowchart,terminator,CU-06: Retroalimentación por Capítulos,4,14,solid
+25,UseCase,flowchart,terminator,CU-07: Monitorear Progreso y Grafo,4,17,solid
+26,UseCase,flowchart,terminator,CU-08: Validar Plazos,5,11,dashed
+30,SubUseCase,flowchart,process,<<include>> Validar Paridad (2 Jurados),10,30,dashed
+31,SubUseCase,flowchart,process,<<include>> Minimo 1 Unicor (RF-C13),10,31,dashed
+32,SubUseCase,flowchart,process,<<include>> Conflicto de Interes (RN-01),10,32,dashed
+33,SubUseCase,flowchart,process,<<extend>> Datos Jurado Externo (RF-C14),10,33,dashed
+34,SubUseCase,flowchart,process,<<include>> Rúbrica de Evaluacion,13,34,dashed
+35,SubUseCase,flowchart,process,<<include>> Confirmacion Electronica (RF-J10),16,35,dashed
+36,SubUseCase,flowchart,process,<<include>> Sello Criptografico Inmutable (RNF-04),16,36,dashed
+37,SubUseCase,flowchart,process,<<include>> Grafo Interactivo (RF-C16),17,37,dashed

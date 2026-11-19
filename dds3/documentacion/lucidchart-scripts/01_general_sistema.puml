@@ -1,0 +1,68 @@
+@startuml
+title Repositorio de Tesis de Posgrado - Diagrama General de Casos de Uso
+left to right direction
+skinparam packageStyle rectangle
+skinparam actorStyle awesome
+
+actor "Coordinador de Posgrados" as Coord
+actor "Jurado Interno\n(Unicórdoba)" as JuradoInt
+actor "Jurado Externo" as JuradoExt
+actor "Estudiante / Tesista" as Estudiante
+actor "Sistema Cron / Alertas" as CronSys
+
+rectangle "Sistema de Gestión de Tesis — Universidad de Córdoba" {
+
+  package "Módulo 1: Asignación y Gestión de Jurados" {
+    usecase "CU-01: Asignar Jurados a Tesis" as CU01
+    usecase "CU-08: Aceptar o Declinar Designación" as CU08
+    usecase "CU-05: Gestionar Discrepancia y Dirimente" as CU05
+  }
+
+  package "Módulo 2: Evaluación y Retroalimentación" {
+    usecase "CU-02: Evaluar Tesis y Emitir Concepto" as CU02
+    usecase "CU-06: Retroalimentación por Capítulos" as CU06
+  }
+
+  package "Módulo 3: Sustentación y Acta Final" {
+    usecase "CU-03: Programar y Confirmar Sustentación" as CU03
+    usecase "CU-04: Diligenciar y Firmar Acta" as CU04
+  }
+
+  package "Módulo 4: Seguimiento y Auditoría" {
+    usecase "CU-07: Monitorear Progreso y Grafo" as CU07
+    usecase "CU-09: Exportar Reportes y Auditoría" as CU09
+  }
+}
+
+' Relaciones Coordinador
+Coord --> CU01
+Coord --> CU05
+Coord --> CU03
+Coord --> CU04
+Coord --> CU07
+Coord --> CU09
+
+' Relaciones Jurado Interno
+JuradoInt --> CU08
+JuradoInt --> CU02
+JuradoInt --> CU06
+JuradoInt --> CU03
+JuradoInt --> CU04
+
+' Relaciones Jurado Externo
+JuradoExt --> CU08
+JuradoExt --> CU02
+JuradoExt --> CU06
+JuradoExt --> CU03
+JuradoExt --> CU04
+
+' Relaciones Estudiante
+Estudiante --> CU06
+Estudiante --> CU07
+
+' Relaciones Sistema Automatizado
+CronSys --> CU08
+CronSys --> CU02
+CronSys --> CU07
+
+@enduml

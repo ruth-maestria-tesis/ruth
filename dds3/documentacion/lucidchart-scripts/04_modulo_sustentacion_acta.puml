@@ -1,0 +1,35 @@
+@startuml
+title Módulo 3: Sustentación y Acta Final Inmutable (CU-03, CU-04)
+left to right direction
+skinparam packageStyle rectangle
+
+actor "Coordinador de Posgrados" as Coord
+actor "Jurados Evaluadores" as Jurado
+
+rectangle "Módulo 3: Sustentación y Acta Oficial" {
+  usecase "CU-03: Programar y Confirmar Sustentación" as CU03
+  usecase "Registrar Fecha, Hora y Modalidad" as Inc_Prop
+  usecase "Confirmar Disponibilidad por Jurados" as Inc_Conf
+
+  usecase "CU-04: Diligenciar y Confirmar Acta" as CU04
+  usecase "Consolidar Nota y Menciones de Honor" as Inc_Calc
+  usecase "Confirmación Electrónica Simple (RF-J10)" as Inc_Firma
+  usecase "Sellado Criptográfico e Inmutabilidad (RNF-04)" as Inc_Hash
+  usecase "Generar Copia Oficial en PDF" as Ext_PDF
+}
+
+' Flujos CU-03
+Coord --> CU03
+Jurado --> CU03
+CU03 ..> Inc_Prop : <<include>>
+CU03 ..> Inc_Conf : <<include>>
+
+' Flujos CU-04
+Coord --> CU04
+Jurado --> CU04
+CU04 ..> Inc_Calc : <<include>>
+CU04 ..> Inc_Firma : <<include>>
+CU04 ..> Inc_Hash : <<include>>
+CU04 ..> Ext_PDF : <<extend>>
+
+@enduml
