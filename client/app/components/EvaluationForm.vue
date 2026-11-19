@@ -44,7 +44,7 @@ const criteria: { key: keyof Rubric; label: string }[] = [
 function fill(e: Evaluation | null) {
   evaluation.value = e;
   if (!e) return;
-  Object.assign(rubric, e.rubric ?? { methodology: 0, relevance: 0, writingQuality: 0 });
+  Object.assign(rubric, { methodology: 0, relevance: 0, writingQuality: 0 }, e.rubric ?? {});
   verdict.value = e.verdict;
   comments.value = e.comments ?? '';
 }

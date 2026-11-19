@@ -130,7 +130,7 @@ export const ERROR_MESSAGES: Partial<Record<ErrorCode, string>> = {
   [ErrorCode.ASSIGNMENT_NOT_REPLACEABLE]: 'Esta designación no se puede reemplazar.',
   [ErrorCode.ASSIGNMENT_NOT_EXTERNAL]: 'La designación no corresponde a un jurado externo.',
   [ErrorCode.EVALUATION_NOT_FOUND]: 'El concepto no existe.',
-  [ErrorCode.EVALUATION_NOT_ALLOWED]: 'Debe aceptar la designación antes de evaluar.',
+  [ErrorCode.EVALUATION_NOT_ALLOWED]: 'La tesis no está en una etapa que permita emitir este concepto.',
   [ErrorCode.EVALUATION_LOCKED]: 'El concepto ya fue emitido y no se puede modificar.',
   [ErrorCode.EVALUATION_INCOMPLETE]: 'Complete la rúbrica, el concepto final y observaciones de al menos 20 caracteres.',
   [ErrorCode.FEEDBACK_NOT_FOUND]: 'La observación no existe.',

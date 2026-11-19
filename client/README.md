@@ -15,9 +15,9 @@ The API must be running (`pnpm dev:server`, `http://localhost:3001/api`) with `C
 | Variable | Default | Meaning |
 |---|---|---|
 | `NUXT_PUBLIC_API_BASE` | `http://localhost:3001/api` | API base URL |
-| `NUXT_PUBLIC_MOCK_MODULES` | `evaluations,feedback,disputes,defenses,minutes,dashboard` | Modules served by in-memory mock data (`app/utils/mocks.ts`). Comma list, `all`, or empty (`NUXT_PUBLIC_MOCK_MODULES=`) to use the real API for everything |
+| `NUXT_PUBLIC_MOCK_MODULES` | empty (real API for everything) | Modules served by in-memory mock data (`app/utils/mocks.ts`), for demos without a server. Comma list of `evaluations,feedback,disputes,defenses,minutes,notifications,dashboard`, or `all` |
 
-When the server modules land, remove them from the list. The mocks follow `docs/superpowers/specs/2026-11-19-mvp-api-contracts.md`, live only in the current tab and reset on reload. While `dashboard` is mocked, its counts come from the real `GET /theses` list.
+Every module now talks to the real server by default. The mocks follow `docs/superpowers/specs/2026-11-19-mvp-api-contracts.md`, live only in the current tab and reset on reload. While `dashboard` is mocked, its counts come from the real `GET /theses` list.
 
 ## Auth
 - httpOnly cookies; every request uses `credentials: 'include'` (`app/utils/http.ts`).

@@ -10,9 +10,16 @@ export default defineNuxtPlugin({
     const router = useRouter();
     const goLogin = () => {
       const auth = useAuthStore(nuxtApp.$pinia as never);
+      const wasExternal = !!auth.user?.scope;
       auth.clear();
       const current = router.currentRoute.value;
-      if (current.path !== '/login' && !current.path.startsWith('/external')) {
+      if (current.path.startsWith('/external') || current.path === '/auth/external-access') return;
+      // RF-J14: external sessions have no refresh; the juror reopens the emailed link.
+      if (wasExternal) {
+        router.push('/external/expired');
+        return;
+      }
+      if (current.path !== '/login') {
         router.push({ path: '/login', query: { redirect: current.fullPath } });
       }
     };

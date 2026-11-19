@@ -38,7 +38,7 @@ export default defineNuxtConfig({
       apiBase: 'http://localhost:3001/api',
       // Modules not yet on the server that use local mock data (comma list, or 'all' / '').
       // Override with NUXT_PUBLIC_MOCK_MODULES.
-      mockModules: 'evaluations,feedback,disputes,defenses,minutes,dashboard',
+      mockModules: '',
     },
   },
   vite: {

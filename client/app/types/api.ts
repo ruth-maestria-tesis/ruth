@@ -240,13 +240,16 @@ export interface Evaluation {
   jurorId: string;
   juror?: { id: string; firstName: string; lastName: string; isUnicordoba?: boolean };
   assignmentType: AssignmentType;
-  rubric: Rubric | null;
+  /** Partial once any criterion is saved; `score` stays null until complete. */
+  rubric: Partial<Rubric> | null;
   score: number | null;
   verdict: EvaluationVerdict | null;
   comments: string;
   correctionFiles: FileRef[];
   status: EvaluationStatus;
   submittedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
   studentFirstViewedAt?: string;
   studentFirstDownloadedAt?: string;
 }
@@ -278,6 +281,7 @@ export interface FeedbackItem {
   status: FeedbackStatus;
   replies: FeedbackReply[];
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface DisputeView {
@@ -322,8 +326,9 @@ export interface Minutes {
   remarks: string;
   contentHash: string;
   status: MinutesStatus;
-  signatures: { userId: string; name: string; role: string; signedAt: string; ip?: string }[];
-  requiredSigners: { userId: string; name: string; role: string }[];
+  /** role: INTERNAL_JUROR | EXTERNAL_JUROR | COORDINATOR. */
+  signatures: { userId: string; name: string; role: Role; signedAt: string; ip?: string }[];
+  requiredSigners: { userId: string; name: string; role: Role }[];
   sealedAt?: string;
   pdfAvailable: boolean;
 }
