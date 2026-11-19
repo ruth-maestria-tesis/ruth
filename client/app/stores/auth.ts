@@ -44,9 +44,12 @@ export const useAuthStore = defineStore('auth', {
       this.user = (await authApi.login(email, password)).user;
       this.loaded = true;
     },
-    async loginExternal(token: string) {
-      this.user = (await authApi.validateExternalToken(token)).user;
+    /** RF-J14: returns the assignment the link was issued for. */
+    async loginExternal(token: string): Promise<string> {
+      const r = await authApi.validateExternalToken(token);
+      this.user = r.user;
       this.loaded = true;
+      return r.assignmentId;
     },
     async logout() {
       try {

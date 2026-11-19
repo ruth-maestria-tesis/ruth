@@ -4,12 +4,16 @@
  */
 import {
   AssignmentStatus,
+  DefenseModality,
   ErrorCode,
+  EvaluationVerdict,
+  FeedbackChapter,
+  FeedbackStatus,
   JuryViolation,
+  MinutesVerdict,
   Role,
   ThesisStatus,
 } from '@thesis/shared';
-import type { Chapter, DefenseModality, FeedbackStatus, MinutesVerdict, Verdict } from '~/types/api';
 
 export const ROLE_LABELS: Record<Role, string> = {
   [Role.ADMIN]: 'Administrador',
@@ -125,12 +129,31 @@ export const ERROR_MESSAGES: Partial<Record<ErrorCode, string>> = {
   [ErrorCode.ASSIGNMENT_DEADLINE_PASSED]: 'El plazo para responder la designación ya venció.',
   [ErrorCode.ASSIGNMENT_NOT_REPLACEABLE]: 'Esta designación no se puede reemplazar.',
   [ErrorCode.ASSIGNMENT_NOT_EXTERNAL]: 'La designación no corresponde a un jurado externo.',
+  [ErrorCode.EVALUATION_NOT_FOUND]: 'El concepto no existe.',
+  [ErrorCode.EVALUATION_NOT_ALLOWED]: 'Debe aceptar la designación antes de evaluar.',
+  [ErrorCode.EVALUATION_LOCKED]: 'El concepto ya fue emitido y no se puede modificar.',
+  [ErrorCode.EVALUATION_INCOMPLETE]: 'Complete la rúbrica, el concepto final y observaciones de al menos 20 caracteres.',
+  [ErrorCode.FEEDBACK_NOT_FOUND]: 'La observación no existe.',
+  [ErrorCode.FEEDBACK_INVALID_TRANSITION]: 'La observación no está en un estado que permita esta acción (RN-06).',
+  [ErrorCode.FEEDBACK_THESIS_STATUS]: 'Solo se pueden crear observaciones durante la evaluación o la subsanación.',
+  [ErrorCode.DEFENSE_NOT_FOUND]: 'La sustentación no existe.',
+  [ErrorCode.DEFENSE_THESIS_STATUS]: 'La tesis debe estar lista para sustentación.',
+  [ErrorCode.DEFENSE_EXISTS]: 'Ya hay una sustentación abierta para esta tesis.',
+  [ErrorCode.DEFENSE_NOT_EDITABLE]: 'La sustentación ya no se puede modificar.',
+  [ErrorCode.DEFENSE_NOT_JUROR]: 'Solo los jurados activos de la tesis pueden confirmar asistencia.',
+  [ErrorCode.MINUTES_NOT_FOUND]: 'El acta no existe.',
+  [ErrorCode.MINUTES_EXISTS]: 'El acta de esta tesis ya existe.',
+  [ErrorCode.MINUTES_INVALID_GRADE]: 'Una calificación menor a 3.0 exige el veredicto Reprobada.',
+  [ErrorCode.MINUTES_SEALED]: 'El acta está sellada y no admite cambios.',
+  [ErrorCode.MINUTES_SIGNED]: 'El acta ya tiene firmas y no se puede editar.',
+  [ErrorCode.MINUTES_SIGN_ORDER]: 'Los jurados firman primero; el coordinador firma al final.',
+  [ErrorCode.MINUTES_NOT_SIGNER]: 'Usted no es firmante de esta acta.',
+  [ErrorCode.MINUTES_THESIS_STATUS]: 'La tesis debe tener la sustentación programada.',
+  [ErrorCode.NOTIFICATION_NOT_FOUND]: 'La notificación no existe.',
 };
 
-/** Codes from modules still being built (strings until they land in @thesis/shared). */
+/** Client-only codes. */
 const EXTRA_ERROR_MESSAGES: Record<string, string> = {
-  EVALUATION_LOCKED: 'El concepto ya fue emitido y no se puede modificar.',
-  MINUTES_SEALED: 'El acta está sellada y no admite cambios.',
   NETWORK_ERROR: 'No se pudo conectar con el servidor.',
 };
 
@@ -140,14 +163,14 @@ export function errorText(code: string | undefined, fallback?: string): string {
   return fallback ?? 'Ocurrió un error inesperado.';
 }
 
-export const VERDICT_LABELS: Record<Verdict, string> = {
+export const VERDICT_LABELS: Record<EvaluationVerdict, string> = {
   APPROVED_FOR_DEFENSE: 'Aprobado para sustentar',
   APPROVED_WITH_CHANGES: 'Aprobado con modificaciones',
   REJECTED: 'No aprobado / Rechazado',
   APPROVED: 'Aprobado (dirimente)',
 };
 
-export const CHAPTER_LABELS: Record<Chapter, string> = {
+export const CHAPTER_LABELS: Record<FeedbackChapter, string> = {
   INTRODUCTION: 'Introducción',
   THEORETICAL_FRAMEWORK: 'Marco teórico',
   METHODOLOGY: 'Metodología',

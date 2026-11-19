@@ -2,11 +2,11 @@
  * Typed API calls (spec §8). Modules not yet on the server go through
  * `utils/mocks.ts` when listed in runtimeConfig.public.mockModules.
  */
-import { ThesisStatus } from '@thesis/shared';
+import { FeedbackAction, ThesisStatus } from '@thesis/shared';
+import type { FeedbackChapter } from '@thesis/shared';
 import type {
   AppNotification,
   Assignment,
-  Chapter,
   Cohort,
   CreateThesisInput,
   DashboardData,
@@ -15,20 +15,20 @@ import type {
   DisputeView,
   Evaluation,
   EvaluationInput,
-  FeedbackAction,
+  ExternalLink,
   FeedbackItem,
+  GraphView,
   JurorInput,
   JuryResult,
   JuryViolationItem,
   Minutes,
+  MinutesInput,
   Paginated,
   Period,
   Program,
   Thesis,
   ThesisQuery,
-  ThesisSummary,
   User,
-  ExternalLink,
 } from '~/types/api';
 import { request } from './http';
 import {
@@ -39,6 +39,7 @@ import {
   mockFeedback,
   mockMinutes,
   mockNotifications,
+  type MockActor,
 } from './mocks';
 
 const asList = <T>(r: T[] | Paginated<T>): T[] => (Array.isArray(r) ? r : r.items);
@@ -51,7 +52,7 @@ export const authApi = {
   changePassword: (currentPassword: string, newPassword: string) =>
     request<void>('/auth/password', { method: 'PATCH', body: { currentPassword, newPassword } }),
   validateExternalToken: (token: string) =>
-    request<{ user: User }>('/auth/external/validate-token', { method: 'POST', body: { token } }),
+    request<{ user: User; assignmentId: string }>('/auth/external/validate-token', { method: 'POST', body: { token } }),
 };
 
 export const usersApi = {
@@ -66,10 +67,10 @@ export const usersApi = {
 };
 
 export const catalogsApi = {
-  programs: async () => asList(await request<Program[] | Paginated<Program>>('/programs', { query: { limit: 100 } })),
-  periods: async () => asList(await request<Period[] | Paginated<Period>>('/periods', { query: { limit: 100 } })),
+  programs: async () => asList(await request<Program[] | Paginated<Program>>('/programs')),
+  periods: async () => asList(await request<Period[] | Paginated<Period>>('/periods')),
   cohorts: async (programId?: string) =>
-    asList(await request<Cohort[] | Paginated<Cohort>>('/cohorts', { query: { programId, limit: 100 } })),
+    asList(await request<Cohort[] | Paginated<Cohort>>('/cohorts', { query: { programId } })),
 };
 
 export const thesesApi = {
@@ -84,6 +85,7 @@ export const thesesApi = {
     return request<Thesis>(`/theses/${id}/manuscripts`, { method: 'POST', body: form });
   },
   manuscriptPath: (id: string, fileId: string) => `/theses/${id}/manuscripts/${fileId}`,
+  graph: (id: string) => request<GraphView>(`/theses/${id}/graph`),
 };
 
 export const assignmentsApi = {
@@ -110,31 +112,30 @@ export const assignmentsApi = {
   accept: (id: string) => request<Assignment>(`/assignments/${id}/accept`, { method: 'POST' }),
   decline: (id: string, reason: string) =>
     request<Assignment>(`/assignments/${id}/decline`, { method: 'POST', body: { reason } }),
-  externalLink: (id: string) => request<ExternalLink>(`/assignments/${id}/external-link`),
-  /** Juror manuscript access (contract pending on main). */
-  manuscriptPath: (id: string) => `/assignments/${id}/manuscript`,
+  /** RF-J14: rotates the token and returns a fresh link. */
+  externalLink: (id: string) => request<ExternalLink>(`/assignments/${id}/external-link`, { method: 'POST' }),
+};
+
+const orNull = async <T>(p: Promise<T>): Promise<T | null> => {
+  try {
+    return (await p) ?? null;
+  } catch (e) {
+    if ((e as { status?: number }).status === 404) return null;
+    throw e;
+  }
 };
 
 export const evaluationsApi = {
   forThesis: (thesisId: string): Promise<Evaluation[]> =>
     isMocked('evaluations') ? mockEvaluations.listForThesis(thesisId) : request(`/theses/${thesisId}/evaluations`),
-  forAssignment: async (assignmentId: string): Promise<Evaluation | null> => {
-    if (isMocked('evaluations')) return mockEvaluations.getForAssignment(assignmentId);
-    try {
-      return await request<Evaluation>(`/assignments/${assignmentId}/evaluation`);
-    } catch (e) {
-      if ((e as { status?: number }).status === 404) return null;
-      throw e;
-    }
-  },
-  saveDraft: (assignmentId: string, body: EvaluationInput): Promise<Evaluation> =>
+  forAssignment: (assignmentId: string): Promise<Evaluation | null> =>
+    isMocked('evaluations') ? mockEvaluations.getForAssignment(assignmentId) : orNull(request<Evaluation | null>(`/assignments/${assignmentId}/evaluation`)),
+  saveDraft: (assignmentId: string, thesisId: string, body: EvaluationInput): Promise<Evaluation> =>
     isMocked('evaluations')
-      ? mockEvaluations.saveDraft(assignmentId, body)
+      ? mockEvaluations.saveDraft(assignmentId, thesisId, body)
       : request(`/assignments/${assignmentId}/evaluation`, { method: 'PUT', body }),
   submit: (assignmentId: string): Promise<Evaluation> =>
-    isMocked('evaluations')
-      ? mockEvaluations.submit(assignmentId)
-      : request(`/assignments/${assignmentId}/evaluation/submit`, { method: 'POST' }),
+    isMocked('evaluations') ? mockEvaluations.submit(assignmentId) : request(`/assignments/${assignmentId}/evaluation/submit`, { method: 'POST' }),
   uploadCorrection: (evaluationId: string, file: File): Promise<Evaluation> => {
     if (isMocked('evaluations')) return mockEvaluations.uploadCorrection(evaluationId, file);
     const form = new FormData();
@@ -145,66 +146,57 @@ export const evaluationsApi = {
   filePath: (id: string, fileId: string) => `/evaluations/${id}/files/${fileId}`,
 };
 
-export interface Author {
-  id: string;
-  name: string;
-  role: string;
-}
+const FEEDBACK_ROUTE: Record<FeedbackAction, string> = {
+  [FeedbackAction.ADDRESS]: 'address',
+  [FeedbackAction.RESOLVE]: 'resolve',
+  [FeedbackAction.REOPEN]: 'reopen',
+  [FeedbackAction.COMMENT]: 'comment',
+};
 
 export const feedbackApi = {
-  list: (thesisId: string, chapter?: Chapter): Promise<FeedbackItem[]> =>
+  list: (thesisId: string, chapter?: FeedbackChapter): Promise<FeedbackItem[]> =>
     isMocked('feedback') ? mockFeedback.list(thesisId, chapter) : request(`/theses/${thesisId}/feedback`, { query: { chapter } }),
-  create: (thesisId: string, body: { chapter: Chapter; reference?: string; content: string }, author: Author): Promise<FeedbackItem> =>
-    isMocked('feedback') ? mockFeedback.create(thesisId, body, author) : request(`/theses/${thesisId}/feedback`, { method: 'POST', body }),
-  act: (id: string, action: FeedbackAction, content: string, author: Author, file?: File | null): Promise<FeedbackItem> => {
-    if (isMocked('feedback')) return mockFeedback.act(id, action, content, author);
-    const path = `/feedback/${id}/${action.toLowerCase()}`;
-    if (file) {
-      const form = new FormData();
-      form.append('content', content);
-      form.append('file', file);
-      return request(path, { method: 'POST', body: form });
-    }
-    return request(path, { method: 'POST', body: { content } });
-  },
+  create: (thesisId: string, body: { chapter: FeedbackChapter; reference?: string; content: string }, actor: MockActor): Promise<FeedbackItem> =>
+    isMocked('feedback') ? mockFeedback.create(thesisId, body, actor) : request(`/theses/${thesisId}/feedback`, { method: 'POST', body }),
+  act: (id: string, action: FeedbackAction, content: string, actor: MockActor): Promise<FeedbackItem> =>
+    isMocked('feedback')
+      ? mockFeedback.act(id, action, content, actor)
+      : request(`/feedback/${id}/${FEEDBACK_ROUTE[action]}`, { method: 'POST', body: content ? { content } : {} }),
 };
 
 export const disputesApi = {
-  get: (thesis: ThesisSummary): Promise<DisputeView> =>
-    isMocked('disputes') ? mockDisputes.get(thesis) : request(`/theses/${thesis.id}/dispute`),
+  get: (thesisId: string, status: ThesisStatus): Promise<DisputeView> =>
+    isMocked('disputes') ? mockDisputes.get(thesisId, status) : request(`/theses/${thesisId}/dispute`),
 };
 
 export const defensesApi = {
-  list: (): Promise<Defense[]> => (isMocked('defenses') ? mockDefenses.list() : request<Defense[] | Paginated<Defense>>('/defenses').then(asList)),
-  forThesis: async (thesisId: string): Promise<Defense | null> => {
-    if (isMocked('defenses')) return mockDefenses.forThesis(thesisId);
-    const all = asList(await request<Defense[] | Paginated<Defense>>('/defenses', { query: { thesisId } }));
-    return all.find((d) => d.thesisId === thesisId && d.status !== 'CANCELLED') ?? null;
-  },
-  schedule: (thesis: ThesisSummary, body: DefenseInput): Promise<Defense> =>
-    isMocked('defenses') ? mockDefenses.schedule(thesis, body) : request(`/theses/${thesis.id}/defense`, { method: 'POST', body }),
+  list: (query: { status?: string } = {}): Promise<Defense[]> =>
+    isMocked('defenses') ? mockDefenses.list() : request<Defense[] | Paginated<Defense>>('/defenses', { query: { ...query, limit: 100 } }).then(asList),
+  forThesis: (thesisId: string): Promise<Defense | null> =>
+    isMocked('defenses') ? mockDefenses.forThesis(thesisId) : orNull(request<Defense | null>(`/theses/${thesisId}/defense`)),
+  schedule: (
+    thesis: { id: string; code: string; title: string; studentName: string },
+    body: DefenseInput,
+    jurors: { userId: string; name: string }[],
+  ): Promise<Defense> =>
+    isMocked('defenses') ? mockDefenses.schedule(thesis, body, jurors) : request(`/theses/${thesis.id}/defense`, { method: 'POST', body }),
   update: (id: string, body: Partial<DefenseInput>): Promise<Defense> =>
     isMocked('defenses') ? mockDefenses.update(id, body) : request(`/defenses/${id}`, { method: 'PATCH', body }),
-  confirm: (id: string, author: Author): Promise<Defense> =>
-    isMocked('defenses') ? mockDefenses.confirm(id, author) : request(`/defenses/${id}/confirm`, { method: 'POST' }),
+  confirm: (id: string, actor: MockActor): Promise<Defense> =>
+    isMocked('defenses') ? mockDefenses.confirm(id, actor) : request(`/defenses/${id}/confirm`, { method: 'POST' }),
+  cancel: (id: string): Promise<Defense> =>
+    isMocked('defenses') ? mockDefenses.cancel(id) : request(`/defenses/${id}/cancel`, { method: 'POST' }),
 };
 
 export const minutesApi = {
-  forThesis: async (thesisId: string): Promise<Minutes | null> => {
-    if (isMocked('minutes')) return mockMinutes.forThesis(thesisId);
-    try {
-      return await request<Minutes>(`/theses/${thesisId}/minutes`);
-    } catch (e) {
-      if ((e as { status?: number }).status === 404) return null;
-      throw e;
-    }
-  },
-  create: (thesisId: string): Promise<Minutes> =>
-    isMocked('minutes') ? mockMinutes.create(thesisId) : request(`/theses/${thesisId}/minutes`, { method: 'POST', body: {} }),
-  update: (id: string, body: Partial<Pick<Minutes, 'finalGrade' | 'verdict' | 'remarks'>>): Promise<Minutes> =>
+  forThesis: (thesisId: string): Promise<Minutes | null> =>
+    isMocked('minutes') ? mockMinutes.forThesis(thesisId) : orNull(request<Minutes | null>(`/theses/${thesisId}/minutes`)),
+  create: (thesisId: string, body: MinutesInput, signers: Minutes['requiredSigners']): Promise<Minutes> =>
+    isMocked('minutes') ? mockMinutes.create(thesisId, body, signers) : request(`/theses/${thesisId}/minutes`, { method: 'POST', body }),
+  update: (id: string, body: Partial<MinutesInput>): Promise<Minutes> =>
     isMocked('minutes') ? mockMinutes.update(id, body) : request(`/minutes/${id}`, { method: 'PATCH', body }),
-  sign: (id: string, author: Author): Promise<Minutes> =>
-    isMocked('minutes') ? mockMinutes.sign(id, author) : request(`/minutes/${id}/sign`, { method: 'POST', body: { confirm: true } }),
+  sign: (id: string, actor: MockActor): Promise<Minutes> =>
+    isMocked('minutes') ? mockMinutes.sign(id, actor) : request(`/minutes/${id}/sign`, { method: 'POST' }),
   pdfPath: (id: string) => `/minutes/${id}/pdf`,
 };
 
@@ -212,7 +204,7 @@ export const notificationsApi = {
   list: (): Promise<AppNotification[]> =>
     isMocked('notifications')
       ? mockNotifications.list()
-      : request<AppNotification[] | Paginated<AppNotification>>('/notifications').then(asList),
+      : request<AppNotification[] | Paginated<AppNotification>>('/notifications', { query: { limit: 20 } }).then(asList),
   unreadCount: (): Promise<{ count: number }> =>
     isMocked('notifications') ? mockNotifications.unreadCount() : request('/notifications/unread-count'),
   read: (id: string): Promise<void> =>
@@ -221,24 +213,25 @@ export const notificationsApi = {
     isMocked('notifications') ? mockNotifications.readAll() : request('/notifications/read-all', { method: 'POST' }),
 };
 
-const ACTIVE = Object.values(ThesisStatus);
+const STATUSES = Object.values(ThesisStatus);
+const CLOSED: ThesisStatus[] = [ThesisStatus.COMPLETED_APPROVED, ThesisStatus.COMPLETED_FAILED, ThesisStatus.NOT_APPROVED];
 export const dashboardApi = {
-  /** While the dashboard module is missing, counts are computed from the real thesis list. */
+  /** While the dashboard module is mocked, counts come from the real thesis list. */
   coordinator: async (filters: { programId?: string; periodId?: string; cohortId?: string } = {}): Promise<DashboardData> => {
     if (!isMocked('dashboard')) return request('/dashboard/coordinator', { query: filters });
     const counts = await Promise.all(
-      ACTIVE.map(async (status) => [status, (await thesesApi.list({ ...filters, status, limit: 1 })).total] as const),
+      STATUSES.map(async (status) => [status, (await thesesApi.list({ ...filters, status, limit: 1 })).total] as const),
     );
     const byStatus = Object.fromEntries(counts) as DashboardData['byStatus'];
-    const closed = ['NOT_APPROVED', 'COMPLETED_APPROVED', 'COMPLETED_FAILED'].reduce(
-      (s, k) => s + (byStatus[k as ThesisStatus] ?? 0),
-      0,
-    );
     const total = counts.reduce((s, [, n]) => s + n, 0);
+    const closed = CLOSED.reduce((s, k) => s + (byStatus[k] ?? 0), 0);
     const alerts: DashboardData['alerts'] = [];
-    if (byStatus.IN_DISPUTE) alerts.push({ kind: 'DISPUTE', severity: 'error', message: `${byStatus.IN_DISPUTE} tesis en discrepancia requieren jurado dirimente (RN-08).` });
-    if (byStatus.PENDING_JUROR_REPLACEMENT) alerts.push({ kind: 'REPLACEMENT', severity: 'warning', message: `${byStatus.PENDING_JUROR_REPLACEMENT} tesis esperan el reemplazo de un jurado que declinó o venció su plazo.` });
-    if (byStatus.SUBMITTED) alerts.push({ kind: 'SUBMITTED', severity: 'info', message: `${byStatus.SUBMITTED} tesis radicadas esperan asignación de jurados (CU-01).` });
-    return { totals: { theses: total, active: total - closed, closed }, byStatus, alerts };
+    if (byStatus.IN_DISPUTE) alerts.push({ kind: 'IN_DISPUTE', message: `${byStatus.IN_DISPUTE} tesis en discrepancia requieren jurado dirimente (RN-08).` });
+    if (byStatus.PENDING_JUROR_REPLACEMENT) alerts.push({ kind: 'PENDING_REPLACEMENT', message: `${byStatus.PENDING_JUROR_REPLACEMENT} tesis esperan el reemplazo de un jurado.` });
+    return {
+      totals: { theses: total, active: total - closed, completed: byStatus.COMPLETED_APPROVED ?? 0, notApproved: byStatus.NOT_APPROVED ?? 0 },
+      byStatus,
+      alerts,
+    };
   },
 };

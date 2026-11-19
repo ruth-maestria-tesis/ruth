@@ -1,8 +1,17 @@
 import type {
   AssignmentStatus,
   AssignmentType,
+  DefenseModality,
+  DefenseStatus,
   ErrorCode,
+  EvaluationStatus,
+  EvaluationVerdict,
+  FeedbackAction,
+  FeedbackChapter,
+  FeedbackStatus,
   JuryViolation,
+  MinutesStatus,
+  MinutesVerdict,
   ProgramLevel,
   Role,
   ThesisStatus,
@@ -207,9 +216,10 @@ export interface JuryResult {
   externalLinks: ExternalLink[];
 }
 
-// ---- Modules being built on main (spec §5 / §8) ----
+// ---- Modules from docs/superpowers/specs/2026-11-19-mvp-api-contracts.md ----
 
-export type Verdict = 'APPROVED_FOR_DEFENSE' | 'APPROVED_WITH_CHANGES' | 'REJECTED' | 'APPROVED';
+export type Verdict = EvaluationVerdict;
+export type Chapter = FeedbackChapter;
 
 export interface Rubric {
   methodology: number;
@@ -217,37 +227,35 @@ export interface Rubric {
   writingQuality: number;
 }
 
+export interface FileRef {
+  fileId: string;
+  fileName: string;
+  uploadedAt: string;
+}
+
 export interface Evaluation {
   id: string;
   assignmentId: string;
   thesisId: string;
   jurorId: string;
-  jurorName?: string;
-  rubric: Rubric;
-  score: number;
-  verdict: Verdict;
+  juror?: { id: string; firstName: string; lastName: string; isUnicordoba?: boolean };
+  assignmentType: AssignmentType;
+  rubric: Rubric | null;
+  score: number | null;
+  verdict: EvaluationVerdict | null;
   comments: string;
-  correctionFileIds: string[];
-  status: 'DRAFT' | 'SUBMITTED';
+  correctionFiles: FileRef[];
+  status: EvaluationStatus;
   submittedAt?: string;
+  studentFirstViewedAt?: string;
+  studentFirstDownloadedAt?: string;
 }
 
 export interface EvaluationInput {
-  rubric: Partial<Rubric>;
-  verdict?: Verdict;
+  rubric?: Partial<Rubric>;
+  verdict?: EvaluationVerdict;
   comments?: string;
 }
-
-export type Chapter =
-  | 'INTRODUCTION'
-  | 'THEORETICAL_FRAMEWORK'
-  | 'METHODOLOGY'
-  | 'RESULTS'
-  | 'CONCLUSIONS'
-  | 'OTHER';
-
-export type FeedbackStatus = 'PENDING' | 'ADDRESSED' | 'RESOLVED';
-export type FeedbackAction = 'ADDRESS' | 'RESOLVE' | 'REOPEN' | 'COMMENT';
 
 export interface FeedbackReply {
   authorId: string;
@@ -263,8 +271,8 @@ export interface FeedbackItem {
   id: string;
   thesisId: string;
   jurorId: string;
-  jurorName?: string;
-  chapter: Chapter;
+  juror?: { id: string; firstName: string; lastName: string };
+  chapter: FeedbackChapter;
   reference?: string;
   content: string;
   status: FeedbackStatus;
@@ -273,23 +281,22 @@ export interface FeedbackItem {
 }
 
 export interface DisputeView {
-  thesis: ThesisSummary;
-  evaluations: Evaluation[];
-  tiebreaker?: Assignment;
+  thesisId: string;
+  status: ThesisStatus;
+  primary: Evaluation[];
+  tiebreaker: { assignment: Assignment; evaluation: Evaluation | null } | null;
 }
 
-export type DefenseModality = 'IN_PERSON' | 'VIRTUAL' | 'HYBRID';
 export interface Defense {
   id: string;
   thesisId: string;
-  thesis?: ThesisSummary;
+  thesis?: { id: string; code: string; title: string; studentName: string };
   scheduledAt: string;
   modality: DefenseModality;
   location?: string;
   meetingUrl?: string;
-  confirmations: { userId: string; userName?: string; confirmedAt: string }[];
-  expectedUserIds?: string[];
-  status: 'PROPOSED' | 'CONFIRMED' | 'HELD' | 'CANCELLED';
+  status: DefenseStatus;
+  jurors: { userId: string; name: string; confirmedAt?: string }[];
 }
 
 export interface DefenseInput {
@@ -299,28 +306,26 @@ export interface DefenseInput {
   meetingUrl?: string;
 }
 
-export type MinutesVerdict = 'APPROVED' | 'APPROVED_MERITORIOUS' | 'APPROVED_LAUREATE' | 'FAILED';
-export interface MinutesSignature {
-  userId: string;
-  userName?: string;
-  role: string;
-  signedAt: string;
-  ip: string;
-  userAgent?: string;
+export interface MinutesInput {
+  finalGrade: number;
+  verdict: MinutesVerdict;
+  remarks: string;
 }
+
 export interface Minutes {
   id: string;
   thesisId: string;
   defenseId: string;
-  number: string | number;
+  number: string;
   finalGrade: number;
   verdict: MinutesVerdict;
   remarks: string;
-  signatures: MinutesSignature[];
-  contentHash?: string;
-  status: 'DRAFT' | 'SEALED';
+  contentHash: string;
+  status: MinutesStatus;
+  signatures: { userId: string; name: string; role: string; signedAt: string; ip?: string }[];
+  requiredSigners: { userId: string; name: string; role: string }[];
   sealedAt?: string;
-  pdfFileId?: string;
+  pdfAvailable: boolean;
 }
 
 export interface AppNotification {
@@ -329,12 +334,30 @@ export interface AppNotification {
   title: string;
   body: string;
   link?: string;
+  entityRef?: { kind: string; id: string };
   readAt?: string;
   createdAt: string;
 }
 
+export interface DashboardAlert {
+  kind: 'PENDING_REPLACEMENT' | 'IN_DISPUTE' | 'RESPONSE_DUE_SOON' | 'EVALUATION_OVERDUE' | string;
+  thesisId?: string;
+  code?: string;
+  title?: string;
+  message: string;
+}
+
 export interface DashboardData {
-  totals: { theses: number; active: number; closed: number };
+  totals: { theses: number; active: number; completed: number; notApproved: number };
   byStatus: Partial<Record<ThesisStatus, number>>;
-  alerts: { kind: string; severity: 'warning' | 'error' | 'info'; message: string; thesisId?: string }[];
+  byCohort?: { cohortId: string; name: string; count: number }[];
+  alerts: DashboardAlert[];
+}
+
+export interface GraphView {
+  thesisId: string;
+  status: ThesisStatus;
+  progress: number;
+  nodes: { id: string; kind: 'STATUS' | 'ASSIGNMENT' | 'EVALUATION' | 'DEFENSE' | 'MINUTES'; label: string; at?: string; status?: string; current?: boolean }[];
+  edges: { from: string; to: string; label?: string }[];
 }

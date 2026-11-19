@@ -14,6 +14,12 @@ const data = ref<DashboardData | null>(null);
 const loading = ref(true);
 const nearDeadline = ref<{ thesis: Thesis; assignment: Assignment }[]>([]);
 
+const ALERT_TYPE: Record<string, 'error' | 'warning' | 'info'> = {
+  IN_DISPUTE: 'error',
+  EVALUATION_OVERDUE: 'error',
+  PENDING_REPLACEMENT: 'warning',
+  RESPONSE_DUE_SOON: 'warning',
+};
 const count = (...s: ThesisStatus[]) => s.reduce((n, k) => n + (data.value?.byStatus[k] ?? 0), 0);
 
 async function load() {
@@ -116,8 +122,18 @@ onMounted(load);
               <v-btn size="small" variant="outlined" :to="`/coordinator/theses/${row.thesis.id}`">Ver tesis</v-btn>
             </template>
           </v-alert>
-          <v-alert v-for="a in data?.alerts ?? []" :key="a.kind" :type="a.severity" variant="tonal" density="compact" class="mb-2">
-            {{ a.message }}
+          <v-alert
+            v-for="(a, i) in data?.alerts ?? []"
+            :key="`${a.kind}-${i}`"
+            :type="ALERT_TYPE[a.kind] ?? 'info'"
+            variant="tonal"
+            density="compact"
+            class="mb-2"
+          >
+            <strong v-if="a.code">{{ a.code }}: </strong>{{ a.message }}
+            <template v-if="a.thesisId" #append>
+              <v-btn size="small" variant="outlined" :to="a.kind === 'IN_DISPUTE' ? `/coordinator/theses/${a.thesisId}/dispute` : `/coordinator/theses/${a.thesisId}`">Atender</v-btn>
+            </template>
           </v-alert>
           <div v-if="!loading && !nearDeadline.length && !data?.alerts.length" class="text-medium-emphasis">Sin alertas activas.</div>
         </v-card>

@@ -122,6 +122,9 @@ async function submit() {
             · Codirectores: {{ thesis.coAdvisorIds.length }}
           </div>
         </v-sheet>
+        <v-alert v-if="!thesis.currentManuscriptId" type="warning" variant="tonal" density="compact" class="mb-4">
+          La tesis aún no tiene manuscrito. Cárguelo en la ficha antes de asignar jurados.
+        </v-alert>
         <v-row>
           <v-col cols="12" md="6">
             <JurorSelector :key="`a${key}`" v-model="juror1" label="Jurado 1 (Docente Unicórdoba)" :allow-external="false" :error="slotError(1)" @selected="user1 = $event" />

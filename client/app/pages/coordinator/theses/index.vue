@@ -114,7 +114,7 @@ function onOptions(o: { page: number; itemsPerPage: number; sortBy: { key: strin
       hover
       @update:options="onOptions"
     >
-      <template #[`item.code`]="{ item }"><strong>{{ item.code }}</strong></template>
+      <template #[`item.code`]="{ item }"><strong class="text-no-wrap">{{ item.code }}</strong></template>
       <template #[`item.title`]="{ item }">
         <NuxtLink :to="`/coordinator/theses/${item.id}`" class="font-weight-bold text-high-emphasis text-decoration-none">{{ item.title }}</NuxtLink>
         <div class="text-meta">{{ programName(item.programId) }} · {{ cohortName(item.cohortId) }}</div>

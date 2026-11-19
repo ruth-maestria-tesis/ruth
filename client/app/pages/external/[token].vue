@@ -10,9 +10,8 @@ const error = ref('');
 
 onMounted(async () => {
   try {
-    await auth.loginExternal(String(route.params.token));
-    const ids = auth.user?.scope?.assignmentIds ?? [];
-    await navigateTo(ids.length === 1 ? `/juror/evaluation/${ids[0]}` : '/juror', { replace: true });
+    const assignmentId = await auth.loginExternal(String(route.params.token));
+    await navigateTo(assignmentId ? `/juror/evaluation/${assignmentId}` : '/juror', { replace: true });
   } catch (e) {
     error.value = e instanceof ApiError ? e.userMessage : 'No se pudo validar el enlace de acceso.';
   }
