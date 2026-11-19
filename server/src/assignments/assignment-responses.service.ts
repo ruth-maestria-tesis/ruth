@@ -154,7 +154,8 @@ export class AssignmentResponsesService {
   /**
    * CU-08 FA-02. Called hourly by the scheduler (stage 8). Returns how many expired.
    * Assignments of a SUBMITTED thesis (a CU-01 in flight, or its orphans) are left alone.
-   * Also reconciles theses whose advance to UNDER_EVALUATION was lost after both accepts.
+   * Also reconciles theses whose advance to UNDER_EVALUATION was lost after both accepts, and
+   * JURORS_ASSIGNED theses with an empty primary slot (a lost PENDING_JUROR_REPLACEMENT).
    */
   async expirePending(now = new Date()): Promise<number> {
     const overdue = await this.model
@@ -204,6 +205,7 @@ export class AssignmentResponsesService {
       );
     }
     await this.reconcileAcceptedJuries();
+    await this.reconcileEmptySlots();
     return expired;
   }
 
@@ -342,6 +344,47 @@ export class AssignmentResponsesService {
       } catch (e) {
         this.logger.error(
           `Reconcile: thesis ${thesisId.toHexString()} could not advance to UNDER_EVALUATION`,
+          stack(e),
+        );
+      }
+    }
+  }
+
+  /** Heals a lost PENDING_JUROR_REPLACEMENT: JURORS_ASSIGNED theses with < 2 active primaries. */
+  private async reconcileEmptySlots(): Promise<void> {
+    const assigned = await this.theses.findIdsByStatuses([
+      ThesisStatus.JURORS_ASSIGNED,
+    ]);
+    if (!assigned.length) return;
+    const full = new Set(
+      (
+        await this.model
+          .aggregate<{ _id: Types.ObjectId }>([
+            {
+              $match: {
+                thesisId: { $in: assigned },
+                type: AssignmentType.PRIMARY,
+                isActive: true,
+              },
+            },
+            { $group: { _id: '$thesisId', n: { $sum: 1 } } },
+            { $match: { n: { $gte: 2 } } },
+          ])
+          .exec()
+      ).map((r) => r._id.toHexString()),
+    );
+    for (const thesisId of assigned) {
+      if (full.has(thesisId.toHexString())) continue;
+      try {
+        // Races (e.g. a replacement filling the slot meanwhile) are no-ops in there.
+        await this.markNeedsReplacement(
+          thesisId,
+          SYSTEM_ACTOR,
+          'Reconcile: a primary juror slot is empty',
+        );
+      } catch (e) {
+        this.logger.error(
+          `Reconcile: thesis ${thesisId.toHexString()} could not move to PENDING_JUROR_REPLACEMENT`,
           stack(e),
         );
       }

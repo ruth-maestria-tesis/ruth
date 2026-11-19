@@ -3,6 +3,7 @@ import { getModelToken } from '@nestjs/mongoose';
 import { AssignmentStatus, Role, ThesisStatus } from '@thesis/shared';
 import { randomUUID } from 'crypto';
 import { Model } from 'mongoose';
+import { AssignmentsService } from '../src/assignments/assignments.service';
 import { Assignment } from '../src/assignments/schemas/assignment.schema';
 import { Thesis } from '../src/theses/schemas/thesis.schema';
 import { UsersService } from '../src/users/users.service';
@@ -293,7 +294,7 @@ describe('Assignments — replacement (e2e)', () => {
     expect(user.roles).toEqual([Role.EXTERNAL_JUROR]);
   });
 
-  it('two concurrent replacements of one slot: exactly one wins, no orphan users', async () => {
+  it('two concurrent replacements of one slot: one 201, one 409, one active row, only the winner creates a user', async () => {
     const { thesis, a2 } = await setup();
     const emails = [uniqueEmail(), uniqueEmail()];
     const results = await Promise.all(
@@ -425,38 +426,141 @@ describe('Assignments — replacement (e2e)', () => {
     );
   });
 
-  it('concurrent fills of both empty slots still require a Unicórdoba juror', async () => {
-    const { thesis, a1, a2, juror1, juror2 } = await setup();
-    await juror1
-      .post(`/api/assignments/${a1}/decline`)
+  /** Thesis with both primary slots declined (PENDING_JUROR_REPLACEMENT). */
+  async function bothDeclined() {
+    const ctx = await setup();
+    await ctx.juror1
+      .post(`/api/assignments/${ctx.a1}/decline`)
       .send({ reason: 'a' })
       .expect(200);
-    await juror2!
-      .post(`/api/assignments/${a2}/decline`)
+    await ctx
+      .juror2!.post(`/api/assignments/${ctx.a2}/decline`)
       .send({ reason: 'b' })
       .expect(200);
-    const [e1, e2] = await Promise.all([
-      createExternalJuror(app),
-      createExternalJuror(app),
+    return ctx;
+  }
+
+  it('a fill of the other slot during the insert breaking RF-C13 undoes this replacement (409 with violations)', async () => {
+    const { thesis, a1, a2 } = await bothDeclined();
+    const other = await createExternalJuror(app);
+    const email = uniqueEmail();
+    const original = assignments.insertMany.bind(assignments);
+    let otherRes:
+      { status: number; body: { assignment: { id: string } } } | undefined;
+    const spy = jest
+      .spyOn(assignments, 'insertMany')
+      .mockImplementationOnce((async (...args: unknown[]) => {
+        // Replacement Y runs to completion while X sits between its mark and its insert.
+        otherRes = await replace(thesis.id as string, {
+          assignmentId: a2,
+          juror: { jurorId: other.id },
+        });
+        return (original as (...a: unknown[]) => Promise<unknown>)(...args);
+      }) as never);
+    const res = await replace(thesis.id as string, {
+      assignmentId: a1,
+      juror: { newExternal: newExt(email) },
+    });
+    spy.mockRestore();
+    expect(otherRes?.status).toBe(201);
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('ASSIGNMENT_CONFLICT');
+    expect(res.body.details.violations).toEqual([
+      { code: 'JUROR_UNICORDOBA_REQUIRED' },
     ]);
-    const results = await Promise.all([
-      replace(thesis.id as string, {
-        assignmentId: a1,
-        juror: { jurorId: e1.id },
-      }),
-      replace(thesis.id as string, {
-        assignmentId: a2,
-        juror: { jurorId: e2.id },
-      }),
-    ]);
-    // Each alone is valid; together they break RF-C13, so at most one may stay.
-    expect(results.some((r) => r.status !== 201)).toBe(true);
+    expect(await app.get(UsersService).findManyByEmails([email])).toHaveLength(
+      0,
+    );
     const active = await assignments
       .find({ thesisId: thesis._id, isActive: true })
       .exec();
-    expect(active.length).toBeLessThan(2);
+    expect(active.map((a) => a.id as string)).toEqual([
+      otherRes!.body.assignment.id,
+    ]);
+    const old = await assignments.findById(a1);
+    expect(old?.status).toBe(AssignmentStatus.DECLINED);
+    expect(old?.replacedById).toBeUndefined();
     expect(await statusOf(thesis._id)).toBe(
       ThesisStatus.PENDING_JUROR_REPLACEMENT,
+    );
+  });
+
+  it('a failed move to JURORS_ASSIGNED undoes the replacement and its inline user', async () => {
+    const { thesis, a1, juror1 } = await setup();
+    await juror1
+      .post(`/api/assignments/${a1}/decline`)
+      .send({ reason: 'x' })
+      .expect(200);
+    const email = uniqueEmail();
+    const spy = jest
+      .spyOn(app.get(WorkflowService), 'transition')
+      .mockRejectedValueOnce(new Error('transition failed'));
+    await replace(thesis.id as string, {
+      assignmentId: a1,
+      juror: { newExternal: newExt(email) },
+    }).expect(500);
+    spy.mockRestore();
+    const old = await assignments.findById(a1);
+    expect(old?.status).toBe(AssignmentStatus.DECLINED);
+    expect(old?.replacedById).toBeUndefined();
+    expect(
+      await assignments.countDocuments({ thesisId: thesis._id, slot: 1 }),
+    ).toBe(1);
+    expect(await app.get(UsersService).findManyByEmails([email])).toHaveLength(
+      0,
+    );
+    expect(await statusOf(thesis._id)).toBe(
+      ThesisStatus.PENDING_JUROR_REPLACEMENT,
+    );
+  });
+
+  it('a newcomer who already answered is kept when the undo would run', async () => {
+    const { thesis, a1, juror1 } = await setup();
+    await juror1
+      .post(`/api/assignments/${a1}/decline`)
+      .send({ reason: 'x' })
+      .expect(200);
+    const newcomer = await createUser(app, { roles: [Role.INTERNAL_JUROR] });
+    const agent = await loginAgent(app, newcomer.email);
+    const spy = jest
+      .spyOn(app.get(WorkflowService), 'transition')
+      .mockImplementationOnce(async () => {
+        const fresh = await assignments
+          .findOne({ thesisId: thesis._id, slot: 1, isActive: true })
+          .exec();
+        await agent
+          .post(`/api/assignments/${fresh!.id as string}/accept`)
+          .expect(200);
+        throw new Error('transition failed');
+      });
+    const res = await replace(thesis.id as string, {
+      assignmentId: a1,
+      juror: { jurorId: newcomer.id },
+    }).expect(201);
+    spy.mockRestore();
+    expect(res.body.assignment).toMatchObject({
+      jurorId: newcomer.id,
+      status: AssignmentStatus.ACCEPTED,
+    });
+    expect((await assignments.findById(a1))?.replacedById?.toHexString()).toBe(
+      res.body.assignment.id,
+    );
+  });
+
+  it('a link that cannot be generated does not fail the committed replacement', async () => {
+    const { thesis, a2 } = await setup();
+    const spy = jest
+      .spyOn(app.get(AssignmentsService), 'rotateLink')
+      .mockRejectedValueOnce(new Error('link failed'));
+    const res = await replace(thesis.id as string, {
+      assignmentId: a2,
+      juror: { newExternal: newExt(uniqueEmail()) },
+    }).expect(201);
+    spy.mockRestore();
+    expect(res.body.externalLink).toBeUndefined();
+    expect(res.body.assignment.status).toBe(AssignmentStatus.PENDING);
+    expect((await assignments.findById(a2))?.status).toBe(
+      AssignmentStatus.REPLACED,
     );
   });
 });

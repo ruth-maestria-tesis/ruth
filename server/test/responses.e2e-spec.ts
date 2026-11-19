@@ -298,6 +298,23 @@ describe('Assignments — CU-08 (e2e)', () => {
     expect(t?.history.at(-1)).toMatchObject({ actorRole: 'SYSTEM' });
   });
 
+  it('expirePending reconciles a JURORS_ASSIGNED thesis with an empty juror slot', async () => {
+    const { thesis, a1 } = await setup();
+    // A decline whose move to PENDING_JUROR_REPLACEMENT was lost.
+    await assignments.updateOne(
+      { _id: a1 },
+      { status: AssignmentStatus.DECLINED, isActive: false },
+    );
+    const full = await setup();
+    await app.get(AssignmentResponsesService).expirePending(new Date());
+    const t = await theses.findById(thesis._id);
+    expect(t?.status).toBe(ThesisStatus.PENDING_JUROR_REPLACEMENT);
+    expect(t?.history.at(-1)).toMatchObject({ actorRole: 'SYSTEM' });
+    expect((await theses.findById(full.thesis._id))?.status).toBe(
+      ThesisStatus.JURORS_ASSIGNED,
+    );
+  });
+
   it('thesis metadata is only attached for PENDING/ACCEPTED assignments past SUBMITTED', async () => {
     const { thesis, a1, a2, juror1, juror2 } = await setup();
     await juror1

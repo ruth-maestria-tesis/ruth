@@ -8,6 +8,7 @@ import {
   AssignmentType,
   ErrorCode,
   isExternalOnly,
+  JuryViolation,
   Role,
   ThesisStatus,
 } from '@thesis/shared';
@@ -101,6 +102,15 @@ const assignmentConflict = () =>
     ErrorCode.ASSIGNMENT_CONFLICT,
     HttpStatus.CONFLICT,
     'The jury changed concurrently',
+  );
+
+/** RF-C13 broken by a concurrent fill of the other slot; same details shape as assertValid. */
+const unicordobaConflict = () =>
+  new AppException(
+    ErrorCode.ASSIGNMENT_CONFLICT,
+    HttpStatus.CONFLICT,
+    'The jury changed concurrently and now lacks a Universidad de Córdoba juror',
+    { violations: [{ code: JuryViolation.JUROR_UNICORDOBA_REQUIRED }] },
   );
 
 const notReplaceable = (message: string) =>
@@ -334,13 +344,14 @@ export class AssignmentsService {
     );
 
     const settings = await this.settings.get();
-    const { doc, created } = await this.persistReplacement(
+    const persisted = await this.persistReplacement(old, dto, settings, actor);
+    const doc = await this.syncJuryStatus(
+      thesis._id,
       old,
-      dto,
-      settings,
+      persisted.doc,
+      persisted.created,
       actor,
     );
-    await this.syncJuryStatus(thesis._id, old, doc, created, actor);
 
     this.emit(
       ASSIGNMENT_EVENTS.REPLACED,
@@ -349,7 +360,17 @@ export class AssignmentsService {
       `Replaced by ${doc.id as string}`,
     );
     this.emit(ASSIGNMENT_EVENTS.CREATED, doc, actor);
-    const [link] = await this.linksForExternalJurors([doc]);
+    // The replacement is committed: a failed link is logged, not an error. The coordinator
+    // can generate a new one (POST /assignments/:id/external-link).
+    let link: ExternalLink | undefined;
+    try {
+      [link] = await this.linksForExternalJurors([doc]);
+    } catch (err) {
+      this.logger.error(
+        `Assignment ${doc.id as string} was created but its external link could not be generated`,
+        err instanceof Error ? err.stack : String(err),
+      );
+    }
     const [view] = await this.views([doc], { withJuror: true });
     return { assignment: view, externalLink: link };
   }
@@ -429,6 +450,9 @@ export class AssignmentsService {
    * other slot was validated without this juror), moves PENDING_JUROR_REPLACEMENT →
    * JURORS_ASSIGNED once both slots are active, and moves it back if a slot emptied
    * concurrently. Races on the thesis status are no-ops.
+   *
+   * When the undo finds that the newcomer already answered, the replacement stands (the
+   * juror acted on it) and the current assignment is returned instead of an error.
    */
   private async syncJuryStatus(
     thesisId: Types.ObjectId,
@@ -436,15 +460,20 @@ export class AssignmentsService {
     doc: AssignmentDocument,
     created: Created,
     actor: Actor,
-  ): Promise<void> {
+  ): Promise<AssignmentDocument> {
     const active = await this.activePrimaries(thesisId);
     if (active.length >= 2) {
       const jurors = await this.users.findManyByIds(
         active.map((a) => a.jurorId.toHexString()),
       );
       if (!jurors.some((u) => u.jurorProfile?.isUnicordoba)) {
-        await this.undoReplacement(old, doc._id, created);
-        throw assignmentConflict();
+        if (await this.undoReplacement(old, doc._id, created))
+          throw unicordobaConflict();
+        // Kept: go on so the thesis status still matches the stored jury.
+        this.logger.error(
+          `Thesis ${thesisId.toHexString()} kept a jury without a Universidad de Córdoba juror: assignment ${doc.id as string} was already answered`,
+        );
+        doc = (await this.model.findById(doc._id).exec()) ?? doc;
       }
       try {
         await this.workflow.transition({
@@ -456,15 +485,19 @@ export class AssignmentsService {
         });
       } catch (e) {
         if (!isWorkflowRace(e)) {
-          await this.undoReplacement(old, doc._id, created);
-          throw e;
+          if (await this.undoReplacement(old, doc._id, created)) throw e;
+          this.logger.error(
+            `Thesis ${thesisId.toHexString()} could not move to JURORS_ASSIGNED after replacement ${doc.id as string}, which was already answered and stays`,
+            e instanceof Error ? e.stack : String(e),
+          );
+          return (await this.model.findById(doc._id).exec()) ?? doc;
         }
       }
     }
     // A decline/expiry that ran while the slot was being filled may have found the thesis
     // already waiting and left it; with the thesis now JURORS_ASSIGNED it would be hidden.
     try {
-      if ((await this.activePrimaries(thesisId)).length >= 2) return;
+      if ((await this.activePrimaries(thesisId)).length >= 2) return doc;
       await this.workflow.transition({
         thesisId: thesisId.toHexString(),
         expectedFrom: [ThesisStatus.JURORS_ASSIGNED],
@@ -473,22 +506,52 @@ export class AssignmentsService {
         reason: 'A juror slot emptied during the replacement',
       });
     } catch (e) {
-      if (isWorkflowRace(e)) return;
-      // The replacement itself is stored; the next decline/expiry re-evaluates the thesis.
-      this.logger.error(
-        `Thesis ${thesisId.toHexString()} may show JURORS_ASSIGNED with an empty juror slot`,
-        e instanceof Error ? e.stack : String(e),
-      );
+      // The replacement itself is stored; the hourly expirePending run reconciles
+      // JURORS_ASSIGNED theses with an empty slot.
+      if (!isWorkflowRace(e)) {
+        this.logger.error(
+          `Thesis ${thesisId.toHexString()} may show JURORS_ASSIGNED with an empty juror slot`,
+          e instanceof Error ? e.stack : String(e),
+        );
+      }
     }
+    return doc;
   }
 
+  /**
+   * Deletes the new assignment only while it is still PENDING, then the inline user and the
+   * mark on the old one. Returns false (and changes nothing) when the newcomer already
+   * answered or the delete failed: the replacement then stands. Never throws.
+   */
   private async undoReplacement(
     old: AssignmentDocument,
     newId: Types.ObjectId,
     created: Created,
-  ): Promise<void> {
-    await this.compensate(created);
+  ): Promise<boolean> {
+    try {
+      const res = await this.model
+        .deleteOne({ _id: newId, status: AssignmentStatus.PENDING })
+        .exec();
+      if (res.deletedCount === 0) {
+        this.logger.warn(
+          `Replacement ${newId.toHexString()} was already answered; it is kept`,
+        );
+        return false;
+      }
+    } catch (err) {
+      this.logger.error(
+        `Could not undo replacement ${newId.toHexString()}; it is kept`,
+        err instanceof Error ? err.stack : String(err),
+      );
+      return false;
+    }
+    // compensate() keeps the inline user if something else references it.
+    await this.compensate({
+      assignmentIds: [],
+      createdUserIds: created.createdUserIds,
+    });
     await this.restoreOld(old, newId);
+    return true;
   }
 
   /** Reverts the mark, but only if it is still this call's (replacedById = newId). Never throws. */
