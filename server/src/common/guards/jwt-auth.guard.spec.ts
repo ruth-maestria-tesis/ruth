@@ -4,6 +4,7 @@ import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
 import { ErrorCode, Role } from '@thesis/shared';
 import { ACCESS_COOKIE } from '../../auth/auth.constants';
+import type { UsersService } from '../../users/users.service';
 import { AppException } from '../errors/app.exception';
 import { JwtAuthGuard } from './jwt-auth.guard';
 
@@ -35,7 +36,9 @@ describe('JwtAuthGuard', () => {
       throw new Error(`unexpected key ${key}`);
     },
   } as unknown as ConfigService;
-  const guard = new JwtAuthGuard(reflector, jwt, config);
+  const isActive = jest.fn<Promise<boolean>, [string]>();
+  const users = { isActive } as unknown as UsersService;
+  const guard = new JwtAuthGuard(reflector, jwt, config, users);
   const payload = {
     sub: 'u1',
     email: 'a@b.co',
@@ -43,9 +46,10 @@ describe('JwtAuthGuard', () => {
     scope: 'full',
   };
 
-  beforeEach(() =>
-    jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(false),
-  );
+  beforeEach(() => {
+    jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(false);
+    isActive.mockReset().mockResolvedValue(true);
+  });
   afterEach(() => jest.restoreAllMocks());
 
   async function expectUnauthenticated(req: Req) {
@@ -121,6 +125,16 @@ describe('JwtAuthGuard', () => {
       cookies: { [ACCESS_COOKIE]: token },
       headers: {},
     });
+  });
+
+  it('rejects a valid token of an inactive or deleted user', async () => {
+    isActive.mockResolvedValue(false);
+    const token = await jwt.signAsync(payload, { secret: SECRET });
+    await expectUnauthenticated({
+      cookies: { [ACCESS_COOKIE]: token },
+      headers: {},
+    });
+    expect(isActive).toHaveBeenCalledWith('u1');
   });
 
   it('lets @Public() routes through without a token', async () => {

@@ -13,6 +13,7 @@ import {
 import { ApiTags } from '@nestjs/swagger';
 import { Role } from '@thesis/shared';
 import type { Request } from 'express';
+import { AllowScoped } from '../common/decorators/allow-scoped.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { orJsonNull } from '../common/http/json-null';
@@ -46,6 +47,7 @@ export class MinutesController {
     return this.minutes.create(id, dto, user);
   }
 
+  @AllowScoped()
   @Get('theses/:id/minutes')
   @Roles(...READERS)
   @Header('Content-Type', 'application/json')
@@ -56,6 +58,7 @@ export class MinutesController {
     return orJsonNull(await this.minutes.findForThesis(id, user));
   }
 
+  @AllowScoped()
   @Get('minutes/:id')
   @Roles(...READERS)
   findOne(
@@ -76,6 +79,7 @@ export class MinutesController {
   }
 
   /** RNF-04: records ip and user agent with each signature. */
+  @AllowScoped()
   @Post('minutes/:id/sign')
   @HttpCode(200)
   @Roles(Role.COORDINATOR, Role.INTERNAL_JUROR, Role.EXTERNAL_JUROR)
@@ -90,6 +94,7 @@ export class MinutesController {
     });
   }
 
+  @AllowScoped()
   @Get('minutes/:id/pdf')
   @Roles(...READERS)
   async pdf(

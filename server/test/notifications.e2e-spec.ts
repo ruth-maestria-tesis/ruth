@@ -1,11 +1,15 @@
 import { INestApplication } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { getModelToken } from '@nestjs/mongoose';
 import { ErrorCode, Role } from '@thesis/shared';
+import { Model } from 'mongoose';
+import { Notification } from '../src/notifications/schemas/notification.schema';
 import {
   assignJury,
   closeTestApp,
   createAssignableThesis,
   createTestApp,
+  createThesisUnderEvaluation,
   createUser,
   loginAgent,
   TestAgent,
@@ -149,5 +153,79 @@ describe('Notifications (e2e)', () => {
     expect(
       res.items.filter((n) => n.type === 'evaluation.submitted'),
     ).toHaveLength(1);
+  });
+
+  /** Recipients (user ids) of notifications of `type` about `thesisId`, once they appear. */
+  async function recipients(type: string, thesisId: string, min: number) {
+    const model = app.get<Model<Notification>>(
+      getModelToken(Notification.name),
+    );
+    const rows = await eventually(
+      () => model.find({ type, thesisId }).lean().exec(),
+      (r) => r.length >= min,
+    );
+    return rows.map((r) => String(r.userId)).sort();
+  }
+
+  it('thesis.status.changed also reaches the advisor', async () => {
+    const fx = await createThesisUnderEvaluation(app);
+    const ids = await recipients(
+      'thesis.status.changed',
+      fx.thesis.id as string,
+      2,
+    );
+    expect(ids).toContain(fx.thesis.studentId.toHexString());
+    expect(ids).toContain(fx.thesis.advisorId.toHexString());
+  });
+
+  it('defense and feedback events reach the student and the active jurors', async () => {
+    const fx = await createThesisUnderEvaluation(app);
+    const thesisId = fx.thesis.id as string;
+    const events = app.get(EventEmitter2);
+    const student = fx.student.id as string;
+    const jurors = fx.jurors.map((j) => j.id as string);
+
+    events.emit('feedback.reopened', {
+      thesisId,
+      itemId: 'i1',
+      jurorId: jurors[0],
+      studentId: student,
+    });
+    expect(await recipients('feedback.reopened', thesisId, 1)).toEqual([
+      student,
+    ]);
+
+    events.emit('defense.updated', { thesisId, defenseId: 'd1' });
+    expect(await recipients('defense.updated', thesisId, 3)).toEqual(
+      [student, ...jurors].sort(),
+    );
+    const model = app.get<Model<Notification>>(
+      getModelToken(Notification.name),
+    );
+    const updated = await model
+      .findOne({ type: 'defense.updated', thesisId })
+      .exec();
+    expect(updated?.body).toContain('fue reprogramada, confirme de nuevo');
+
+    events.emit('defense.cancelled', { thesisId, defenseId: 'd1' });
+    expect(await recipients('defense.cancelled', thesisId, 3)).toEqual(
+      [student, ...jurors].sort(),
+    );
+  });
+
+  it('defense jurors follow the active-juror rule (no PENDING, no unsubmitted tiebreaker)', async () => {
+    const j1 = await createUser(app, { roles: [Role.INTERNAL_JUROR] });
+    const j2 = await createUser(app, { roles: [Role.INTERNAL_JUROR] });
+    const thesis = await createAssignableThesis(app);
+    await assignJury(app, thesis.id as string, [
+      j1.id as string,
+      j2.id as string,
+    ]);
+    const thesisId = thesis.id as string;
+    app.get(EventEmitter2).emit('defense.proposed', { thesisId });
+    // Both assignments are still PENDING: only the student is notified.
+    expect(await recipients('defense.proposed', thesisId, 1)).toEqual([
+      thesis.studentId.toHexString(),
+    ]);
   });
 });

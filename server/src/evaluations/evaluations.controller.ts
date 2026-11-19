@@ -16,6 +16,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBody, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { Role } from '@thesis/shared';
 import type { Response } from 'express';
+import { AllowScoped } from '../common/decorators/allow-scoped.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { ParseObjectIdPipe } from '../common/pipes/parse-object-id.pipe';
@@ -39,6 +40,7 @@ const JURORS = [Role.INTERNAL_JUROR, Role.EXTERNAL_JUROR];
 export class EvaluationsController {
   constructor(private readonly evaluations: EvaluationsService) {}
 
+  @AllowScoped()
   @Get('theses/:id/evaluations')
   @Roles(...READERS)
   listForThesis(
@@ -56,6 +58,7 @@ export class EvaluationsController {
   }
 
   /** The owner's evaluation, or a JSON `null` (never 204). */
+  @AllowScoped()
   @Get('assignments/:id/evaluation')
   @Roles(...JURORS)
   async mine(
@@ -67,6 +70,7 @@ export class EvaluationsController {
   }
 
   /** CU-02 draft upsert. */
+  @AllowScoped()
   @Put('assignments/:id/evaluation')
   @Roles(...JURORS)
   save(
@@ -78,6 +82,7 @@ export class EvaluationsController {
   }
 
   /** CU-02 submit (no edits afterwards), then RN-08. The body may carry last changes. */
+  @AllowScoped()
   @Post('assignments/:id/evaluation/submit')
   @HttpCode(200)
   @Roles(...JURORS)
@@ -89,6 +94,7 @@ export class EvaluationsController {
     return this.evaluations.submit(id, dto, user);
   }
 
+  @AllowScoped()
   @Post('evaluations/:id/corrections')
   @Roles(...JURORS)
   @UseInterceptors(
@@ -112,6 +118,7 @@ export class EvaluationsController {
     return this.evaluations.addCorrection(id, file, user);
   }
 
+  @AllowScoped()
   @Get('evaluations/:id')
   @Roles(...READERS)
   findOne(
@@ -122,6 +129,7 @@ export class EvaluationsController {
     return this.evaluations.findOne(id, user, ip);
   }
 
+  @AllowScoped()
   @Get('evaluations/:id/files/:fileId')
   @Roles(...READERS)
   async download(

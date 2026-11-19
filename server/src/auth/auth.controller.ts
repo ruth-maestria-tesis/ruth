@@ -12,6 +12,7 @@ import { ConfigService } from '@nestjs/config';
 import { ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import type { CookieOptions, Request, Response } from 'express';
+import { AllowScoped } from '../common/decorators/allow-scoped.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Public } from '../common/decorators/public.decorator';
 import type { AuthUser } from '../common/types/auth-user';
@@ -62,7 +63,7 @@ export class AuthController {
     const session = await this.external.exchange(dto.token);
     res.cookie(ACCESS_COOKIE, session.accessToken, {
       ...this.cookieOptions('/'),
-      maxAge: this.external.sessionTtlSeconds * 1000,
+      maxAge: session.expiresInSeconds * 1000,
     });
     // No refresh for external sessions; an institutional one in this browser must not linger.
     res.clearCookie(REFRESH_COOKIE, this.cookieOptions(REFRESH_COOKIE_PATH));
@@ -82,6 +83,7 @@ export class AuthController {
   }
 
   @Public()
+  @AllowScoped()
   @Post('logout')
   @HttpCode(204)
   async logout(
@@ -93,6 +95,7 @@ export class AuthController {
     res.clearCookie(REFRESH_COOKIE, this.cookieOptions(REFRESH_COOKIE_PATH));
   }
 
+  @AllowScoped()
   @Get('me')
   async me(@CurrentUser() user: AuthUser) {
     return { user: await this.users.findById(user.id) };

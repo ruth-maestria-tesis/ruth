@@ -4,6 +4,10 @@ import {
   Assignment,
   AssignmentSchema,
 } from '../assignments/schemas/assignment.schema';
+import {
+  Evaluation,
+  EvaluationSchema,
+} from '../evaluations/schemas/evaluation.schema';
 import { Thesis, ThesisSchema } from '../theses/schemas/thesis.schema';
 import { User, UserSchema } from '../users/schemas/user.schema';
 import { NotificationsController } from './notifications.controller';
@@ -14,7 +18,7 @@ import {
   NotificationSchema,
 } from './schemas/notification.schema';
 
-// Reads users/theses/assignments through their models (same connection) to avoid module cycles.
+// Reads users/theses/assignments/evaluations through their models (same connection) to avoid module cycles.
 @Module({
   imports: [
     MongooseModule.forFeature([
@@ -22,6 +26,7 @@ import {
       { name: User.name, schema: UserSchema },
       { name: Thesis.name, schema: ThesisSchema },
       { name: Assignment.name, schema: AssignmentSchema },
+      { name: Evaluation.name, schema: EvaluationSchema },
     ]),
   ],
   controllers: [NotificationsController],

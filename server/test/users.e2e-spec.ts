@@ -364,13 +364,14 @@ describe('Users (e2e)', () => {
     });
 
     it('never leaves zero active admins', async () => {
-      // A second admin whose access token outlives its own demotion (15 min by design).
+      // A second admin whose access token (roles in the JWT) outlives its own demotion
+      // (15 min by design). Inactive users are rejected per request, so demote instead.
       const other = await createUser(app, { roles: [Role.ADMIN] });
       const otherAgent = await loginAgent(app, other.email);
       const users = app.get<Model<User>>(getModelToken(User.name));
       await users.updateMany(
         { roles: Role.ADMIN, _id: { $ne: adminId } },
-        { isActive: false },
+        { $set: { roles: [Role.COORDINATOR] } },
       );
 
       const deactivate = await otherAgent

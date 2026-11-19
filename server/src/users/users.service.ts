@@ -93,6 +93,12 @@ export class UsersService {
     await this.model.deleteMany({ _id: { $in: ids } }).exec();
   }
 
+  /** Cheap per-request check (JwtAuthGuard): the user exists and is active. */
+  async isActive(id: string): Promise<boolean> {
+    if (!isValidObjectId(id)) return false;
+    return !!(await this.model.exists({ _id: id, isActive: true }).exec());
+  }
+
   async findById(id: string): Promise<UserDocument> {
     const user = isValidObjectId(id) ? await this.model.findById(id) : null;
     if (!user)

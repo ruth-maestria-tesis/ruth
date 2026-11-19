@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Role } from '@thesis/shared';
+import { AllowScoped } from '../common/decorators/allow-scoped.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { ParseObjectIdPipe } from '../common/pipes/parse-object-id.pipe';
@@ -88,12 +89,14 @@ export class AssignmentsController {
   }
 
   /** CU-08: the juror's assignments with countdown. Declared before `assignments/:id`. */
+  @AllowScoped()
   @Get('assignments/mine')
   @Roles(Role.INTERNAL_JUROR, Role.EXTERNAL_JUROR)
   mine(@CurrentUser() user: AuthUser, @Query() query: QueryMyAssignmentsDto) {
     return this.assignments.findMine(user, query);
   }
 
+  @AllowScoped()
   @Get('assignments/:id')
   @Roles(Role.ADMIN, Role.COORDINATOR, Role.INTERNAL_JUROR, Role.EXTERNAL_JUROR)
   findOne(
@@ -104,6 +107,7 @@ export class AssignmentsController {
   }
 
   /** CU-08 main flow. */
+  @AllowScoped()
   @Post('assignments/:id/accept')
   @HttpCode(200)
   @Roles(Role.INTERNAL_JUROR, Role.EXTERNAL_JUROR)
@@ -115,6 +119,7 @@ export class AssignmentsController {
   }
 
   /** CU-08 FA-01. */
+  @AllowScoped()
   @Post('assignments/:id/decline')
   @HttpCode(200)
   @Roles(Role.INTERNAL_JUROR, Role.EXTERNAL_JUROR)
