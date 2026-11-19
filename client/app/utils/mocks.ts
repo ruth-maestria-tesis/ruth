@@ -236,7 +236,7 @@ export const mockMinutes = {
     const m = findMinutes(id);
     if (!m) return fail('MINUTES_NOT_FOUND', 404);
     if (m.status === MinutesStatus.SEALED) return fail('MINUTES_SEALED');
-    const signer = m.requiredSigners.find((s) => s.userId === actor.id) ?? m.requiredSigners.find((s) => s.role === actor.role && !m.signatures.some((x) => x.userId === s.userId));
+    const signer = m.requiredSigners.find((s) => s.userId === actor.id);
     if (!signer) return fail('MINUTES_NOT_SIGNER', 403);
     const jurorsPending = m.requiredSigners.filter((s) => s.role !== 'COORDINATOR' && !m.signatures.some((x) => x.userId === s.userId));
     if (signer.role === 'COORDINATOR' && jurorsPending.length) return fail('MINUTES_SIGN_ORDER');
