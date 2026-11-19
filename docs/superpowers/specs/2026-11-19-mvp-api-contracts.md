@@ -186,12 +186,12 @@ Listeners (Spanish title and body; `link` is a client route):
 - The STATUS nodes come from `history[]` in order: one node per entered status, plus the initial SUBMITTED.
 - The other entities link to the STATUS node during which they happened.
 
-## 9. external access (RF-J14) — stage-3 Task 7 (in progress)
+## 9. external access (RF-J14) — stage-3 Task 7 (done)
 
-- `GET /assignments/:id/external-link` (COORDINATOR) → `{ url, expiresAt }`, which regenerates the token.
-- `POST /auth/external/validate-token` `{ token }` → sets the session cookies (access only, `EXTERNAL_SESSION_TTL_SECONDS`) and returns `AuthUser` with `scope.assignmentIds`.
+- `POST /assignments/:id/external-link` (COORDINATOR, no body) → `{ assignmentId, url, expiresAt }`; rotates the token. CU-01/replace responses already include the links.
+- `POST /auth/external/validate-token` `{ token }` (public) → 200 `{ user, assignmentId }`; sets only `access_token` (4 h); no refresh (401). A scoped session may use `/auth/me`, `/assignments/mine`, `/assignments/:id`, accept/decline, `GET /theses/:id` (PENDING/ACCEPTED) and the manuscript download (ACCEPTED). 401 `AUTH_EXTERNAL_TOKEN_INVALID` otherwise.
 - The client route for the link is `/auth/external-access?token=…`.
-- The exact contract will be confirmed in the Task 7 commit.
+- Implemented in commit 3a4f649.
 
 ## 10. Seed (MVP)
 
