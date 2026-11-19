@@ -7,6 +7,8 @@ import type { FeedbackStatus } from '@thesis/shared';
 import type { FeedbackChapter } from '@thesis/shared';
 import type {
   AppNotification,
+  AuditLog,
+  AuditQuery,
   Assignment,
   Cohort,
   CreateThesisInput,
@@ -25,13 +27,16 @@ import type {
   Minutes,
   MinutesInput,
   Paginated,
+  ReconcileResult,
+  ReportSummary,
   Period,
   Program,
   Thesis,
   ThesisQuery,
+  ThesisReportFilters,
   User,
 } from '~/types/api';
-import { request } from './http';
+import { apiUrl, request } from './http';
 import {
   isMocked,
   mockDefenses,
@@ -90,6 +95,27 @@ export const thesesApi = {
   graph: (id: string) => request<GraphView>(`/theses/${id}/graph`),
   /** Coordinator: REVISIONS_IN_PROGRESS → READY_FOR_DEFENSE once no feedback is unresolved. */
   readyForDefense: (id: string) => request<unknown>(`/theses/${id}/ready-for-defense`, { method: 'POST' }),
+  /** Re-applies RN-08 from the stored evaluations (idempotent). 409 EVALUATION_NOT_COMPLETE while evaluations are missing. */
+  reconcileOutcome: (id: string) => request<ReconcileResult>(`/theses/${id}/evaluation-outcome/reconcile`, { method: 'POST' }),
+};
+
+/** CU-09 reports. Exports are plain links so the browser sends the auth cookie and saves the attachment. */
+export const reportsApi = {
+  exportUrl: (format: 'xlsx' | 'pdf', filters: ThesisReportFilters = {}): string => {
+    const params = new URLSearchParams();
+    for (const [k, v] of Object.entries(filters)) {
+      if (v !== undefined && v !== null && v !== '') params.set(k, String(v));
+    }
+    const qs = params.toString();
+    return apiUrl(`/reports/theses.${format}${qs ? `?${qs}` : ''}`);
+  },
+  summary: (filters: Pick<ThesisReportFilters, 'programId' | 'periodId' | 'cohortId'> = {}) =>
+    request<ReportSummary>('/reports/summary', { query: { ...filters } }),
+};
+
+/** RNF-04 audit trail (newest first). */
+export const auditApi = {
+  list: (query: AuditQuery = {}) => request<Paginated<AuditLog>>('/audit-logs', { query: { ...query } }),
 };
 
 export const assignmentsApi = {

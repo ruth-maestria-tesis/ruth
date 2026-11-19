@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Role, ThesisStatus } from '@thesis/shared';
 import type { Thesis } from '~/types/api';
-import { thesesApi } from '~/utils/api';
+import { reportsApi, thesesApi } from '~/utils/api';
 import { THESIS_STATUS_LABELS } from '~/utils/i18n';
 import { useAuthStore } from '~/stores/auth';
 import { useUiStore } from '~/stores/ui';
@@ -28,6 +28,16 @@ const sortBy = ref<{ key: string; order: 'asc' | 'desc' }[]>([{ key: 'createdAt'
 const items = ref<Thesis[]>([]);
 const total = ref(0);
 const loading = ref(false);
+
+/** Export links carry the current filters and sort, without pagination. Plain links so the auth cookie is sent. */
+const exportFilters = computed(() => ({
+  ...filters,
+  q: q.value.trim() || undefined,
+  sort: sortBy.value[0]?.key,
+  order: sortBy.value[0]?.order,
+}));
+const xlsxUrl = computed(() => reportsApi.exportUrl('xlsx', exportFilters.value));
+const pdfUrl = computed(() => reportsApi.exportUrl('pdf', exportFilters.value));
 
 const headers = [
   { title: 'Código', key: 'code', sortable: true },
@@ -91,6 +101,8 @@ function onOptions(o: { page: number; itemsPerPage: number; sortBy: { key: strin
         <div class="text-body-2 text-medium-emphasis">Filtros por programa, periodo, cohorte y estado (RF-C01)</div>
       </div>
       <v-spacer />
+      <v-btn variant="outlined" prepend-icon="mdi-file-excel-outline" :href="xlsxUrl">Exportar Excel</v-btn>
+      <v-btn variant="outlined" prepend-icon="mdi-file-pdf-box" :href="pdfUrl">Exportar PDF</v-btn>
       <v-btn v-if="canManage" color="primary" prepend-icon="mdi-plus" to="/coordinator/theses/new">Radicar tesis</v-btn>
     </div>
     <v-row dense class="mb-2">

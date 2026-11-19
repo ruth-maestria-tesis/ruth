@@ -3,7 +3,7 @@ import { AssignmentStatus, FeedbackStatus, Role, ThesisStatus } from '@thesis/sh
 import type { Assignment, ExternalLink } from '~/types/api';
 import { assignmentsApi, feedbackSummaryApi, thesesApi } from '~/utils/api';
 import { downloadFile } from '~/utils/http';
-import { formatDate, fullName } from '~/utils/i18n';
+import { THESIS_STATUS_LABELS, formatDate, fullName } from '~/utils/i18n';
 import { useAuthStore } from '~/stores/auth';
 import { useUiStore } from '~/stores/ui';
 
@@ -57,6 +57,26 @@ async function markReady() {
     await loadFeedbackSummary();
   } finally {
     markingReady.value = false;
+  }
+}
+/** Re-applies RN-08 from the stored evaluations (retry after a failed automatic transition). */
+const canReconcile = computed(() => thesis.value?.status === ThesisStatus.UNDER_EVALUATION || thesis.value?.status === ThesisStatus.IN_DISPUTE);
+const reconciling = ref(false);
+async function reconcile() {
+  reconciling.value = true;
+  try {
+    const r = await thesesApi.reconcileOutcome(id.value);
+    if (r.changed) {
+      ui.notify(`Estado actualizado a ${THESIS_STATUS_LABELS[r.status]}`);
+      await reload();
+    } else {
+      ui.notify('Sin cambios', 'info');
+    }
+  } catch (e) {
+    // 409 EVALUATION_NOT_COMPLETE carries its Spanish message through ApiError.userMessage.
+    ui.error(e);
+  } finally {
+    reconciling.value = false;
   }
 }
 async function reload() {
@@ -134,6 +154,9 @@ const isExternalJuror = (a: Assignment) => a.juror?.roles.includes(Role.EXTERNAL
           <v-btn v-else variant="text" :to="`/coordinator/theses/${thesis.id}/feedback`">Ver observaciones</v-btn>
         </div>
       </v-alert>
+      <div v-if="canReconcile" class="d-flex justify-end mb-2">
+        <v-btn variant="text" size="small" prepend-icon="mdi-refresh" :loading="reconciling" @click="reconcile">Recalcular resultado de evaluación</v-btn>
+      </div>
       <v-row>
         <v-col cols="12" lg="7">
           <v-card class="pa-4 mb-4">

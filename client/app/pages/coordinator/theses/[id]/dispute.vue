@@ -15,6 +15,7 @@ const { thesis, summary, error, load } = useThesis(id);
 const dispute = ref<DisputeView | null>(null);
 const jurorIds = ref<string[]>([]);
 const tiebreakerOpen = ref(false);
+const replaceOpen = ref(false);
 const links = ref<ExternalLink[]>([]);
 const linksOpen = ref(false);
 
@@ -32,6 +33,14 @@ onMounted(async () => {
   await loadDispute();
 });
 const inDispute = computed(() => thesis.value?.status === ThesisStatus.IN_DISPUTE);
+/** PENDING, DECLINED, EXPIRED, or ACCEPTED without a submitted evaluation (a stuck tiebreaker). */
+const canReplaceTiebreaker = computed(() => {
+  const t = dispute.value?.tiebreaker;
+  if (!inDispute.value || !auth.hasRole(Role.COORDINATOR) || !t) return false;
+  const { status } = t.assignment;
+  if (['PENDING', 'DECLINED', 'EXPIRED'].includes(status)) return true;
+  return status === 'ACCEPTED' && t.evaluation?.status !== 'SUBMITTED';
+});
 const approves = (e: Evaluation) => e.verdict !== 'REJECTED';
 function onDone(l?: ExternalLink) {
   load().then(loadDispute);
@@ -88,7 +97,7 @@ function onDone(l?: ExternalLink) {
         </template>
         <div v-else class="text-body-2 text-medium-emphasis mb-3">Sin jurado dirimente designado.</div>
         <v-btn
-          v-if="inDispute && auth.hasRole(Role.COORDINATOR) && (!dispute?.tiebreaker || ['DECLINED', 'EXPIRED'].includes(dispute.tiebreaker.assignment.status))"
+          v-if="inDispute && auth.hasRole(Role.COORDINATOR) && !dispute?.tiebreaker"
           color="error"
           prepend-icon="mdi-account-plus"
           class="mt-2"
@@ -96,10 +105,18 @@ function onDone(l?: ExternalLink) {
         >
           Designar jurado dirimente
         </v-btn>
+        <v-btn v-if="canReplaceTiebreaker" color="warning" variant="tonal" prepend-icon="mdi-account-switch" class="mt-2" @click="replaceOpen = true">Reemplazar dirimente</v-btn>
         <div class="text-meta mt-2">Se valida la ausencia de conflicto de interés (RN-01) y se envía el expediente completo con carácter preferente.</div>
       </v-card>
 
       <ReplaceJurorDialog v-model="tiebreakerOpen" :thesis-id="thesis.id" mode="tiebreaker" :exclude-ids="jurorIds" @done="onDone" />
+      <ReplaceJurorDialog
+        v-model="replaceOpen"
+        :thesis-id="thesis.id"
+        :assignment="dispute?.tiebreaker?.assignment ?? null"
+        :exclude-ids="jurorIds"
+        @done="onDone"
+      />
       <ExternalLinksDialog v-model="linksOpen" :links="links" />
     </template>
   </div>

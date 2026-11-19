@@ -81,7 +81,7 @@ export const VIOLATION_LABELS: Record<JuryViolation, string> = {
     'Al menos un jurado debe pertenecer a la Universidad de Córdoba (RF-C13).',
 };
 
-export const ERROR_MESSAGES: Partial<Record<ErrorCode, string>> = {
+export const ERROR_MESSAGES: Record<ErrorCode, string> = {
   [ErrorCode.VALIDATION_FAILED]: 'Revise los datos del formulario.',
   [ErrorCode.NOT_FOUND]: 'El recurso no existe o no tiene permiso para verlo.',
   [ErrorCode.CONFLICT]: 'La operación entra en conflicto con el estado actual.',
@@ -133,6 +133,7 @@ export const ERROR_MESSAGES: Partial<Record<ErrorCode, string>> = {
   [ErrorCode.EVALUATION_NOT_ALLOWED]: 'La tesis no está en una etapa que permita emitir este concepto.',
   [ErrorCode.EVALUATION_LOCKED]: 'El concepto ya fue emitido y no se puede modificar.',
   [ErrorCode.EVALUATION_INCOMPLETE]: 'Complete la rúbrica, el concepto final y observaciones de al menos 20 caracteres.',
+  [ErrorCode.EVALUATION_NOT_COMPLETE]: 'Aún no hay conceptos suficientes para calcular el resultado: faltan evaluaciones por emitir.',
   [ErrorCode.FEEDBACK_NOT_FOUND]: 'La observación no existe.',
   [ErrorCode.FEEDBACK_INVALID_TRANSITION]: 'La observación no está en un estado que permita esta acción (RN-06).',
   [ErrorCode.FEEDBACK_THESIS_STATUS]: 'Solo se pueden crear observaciones durante la evaluación o la subsanación.',
