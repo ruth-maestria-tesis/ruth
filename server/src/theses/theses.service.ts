@@ -217,7 +217,7 @@ export class ThesesService {
   }
 
   /** RBAC "Si Aceptó": this user's active assignments on the thesis (scope-limited). */
-  private async jurorAccess(
+  async jurorAccess(
     thesisId: Types.ObjectId,
     user: AuthUser,
   ): Promise<JurorAccess> {

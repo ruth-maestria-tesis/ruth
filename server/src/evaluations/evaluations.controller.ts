@@ -1,0 +1,145 @@
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Ip,
+  Param,
+  Post,
+  Put,
+  Res,
+  StreamableFile,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiBody, ApiConsumes, ApiTags } from '@nestjs/swagger';
+import { Role } from '@thesis/shared';
+import type { Response } from 'express';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { Roles } from '../common/decorators/roles.decorator';
+import { ParseObjectIdPipe } from '../common/pipes/parse-object-id.pipe';
+import type { AuthUser } from '../common/types/auth-user';
+import { contentDisposition } from '../files/content-disposition';
+import { MAX_FILE_BYTES } from '../files/file-type';
+import { SaveEvaluationDto } from './dto/evaluation.dto';
+import { EvaluationsService } from './evaluations.service';
+
+const READERS = [
+  Role.COORDINATOR,
+  Role.ADMIN,
+  Role.INTERNAL_JUROR,
+  Role.EXTERNAL_JUROR,
+  Role.STUDENT,
+];
+const JURORS = [Role.INTERNAL_JUROR, Role.EXTERNAL_JUROR];
+
+@ApiTags('evaluations')
+@Controller()
+export class EvaluationsController {
+  constructor(private readonly evaluations: EvaluationsService) {}
+
+  @Get('theses/:id/evaluations')
+  @Roles(...READERS)
+  listForThesis(
+    @Param('id', ParseObjectIdPipe) id: string,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.evaluations.listForThesis(id, user);
+  }
+
+  /** CU-05: comparison of the primary evaluations and the tiebreaker. */
+  @Get('theses/:id/dispute')
+  @Roles(Role.COORDINATOR, Role.ADMIN)
+  dispute(@Param('id', ParseObjectIdPipe) id: string) {
+    return this.evaluations.dispute(id);
+  }
+
+  /** The owner's evaluation, or a JSON `null` (never 204). */
+  @Get('assignments/:id/evaluation')
+  @Roles(...JURORS)
+  async mine(
+    @Param('id', ParseObjectIdPipe) id: string,
+    @CurrentUser() user: AuthUser,
+    @Res() res: Response,
+  ): Promise<void> {
+    res.status(200).json(await this.evaluations.findForAssignment(id, user));
+  }
+
+  /** CU-02 draft upsert. */
+  @Put('assignments/:id/evaluation')
+  @Roles(...JURORS)
+  save(
+    @Param('id', ParseObjectIdPipe) id: string,
+    @Body() dto: SaveEvaluationDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.evaluations.saveDraft(id, dto, user);
+  }
+
+  /** CU-02 submit (no edits afterwards), then RN-08. The body may carry last changes. */
+  @Post('assignments/:id/evaluation/submit')
+  @HttpCode(200)
+  @Roles(...JURORS)
+  submit(
+    @Param('id', ParseObjectIdPipe) id: string,
+    @Body() dto: SaveEvaluationDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.evaluations.submit(id, dto, user);
+  }
+
+  @Post('evaluations/:id/corrections')
+  @Roles(...JURORS)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: MAX_FILE_BYTES, files: 1 },
+      defParamCharset: 'utf8',
+    }),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { file: { type: 'string', format: 'binary' } },
+    },
+  })
+  uploadCorrection(
+    @Param('id', ParseObjectIdPipe) id: string,
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.evaluations.addCorrection(id, file, user);
+  }
+
+  @Get('evaluations/:id')
+  @Roles(...READERS)
+  findOne(
+    @Param('id', ParseObjectIdPipe) id: string,
+    @CurrentUser() user: AuthUser,
+    @Ip() ip: string,
+  ) {
+    return this.evaluations.findOne(id, user, ip);
+  }
+
+  @Get('evaluations/:id/files/:fileId')
+  @Roles(...READERS)
+  async download(
+    @Param('id', ParseObjectIdPipe) id: string,
+    @Param('fileId', ParseObjectIdPipe) fileId: string,
+    @CurrentUser() user: AuthUser,
+    @Ip() ip: string,
+  ): Promise<StreamableFile> {
+    const { info, stream } = await this.evaluations.openCorrection(
+      id,
+      fileId,
+      user,
+      ip,
+    );
+    return new StreamableFile(stream, {
+      type: info.metadata?.mimeType ?? 'application/octet-stream',
+      disposition: contentDisposition(info.filename),
+      length: info.length,
+    });
+  }
+}

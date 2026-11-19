@@ -22,6 +22,7 @@ import {
 } from './dto/create-assignments.dto';
 import { ReplaceAssignmentDto } from './dto/replace-assignment.dto';
 import { DeclineAssignmentDto, QueryMyAssignmentsDto } from './dto/respond.dto';
+import { AssignTiebreakerDto } from './dto/tiebreaker.dto';
 
 @ApiTags('assignments')
 @Controller()
@@ -55,6 +56,21 @@ export class AssignmentsController {
     @CurrentUser() user: AuthUser,
   ) {
     return this.assignments.replace(id, dto, actorFrom(user, Role.COORDINATOR));
+  }
+
+  /** CU-05: designate the tiebreaker juror of an IN_DISPUTE thesis (slot 3). */
+  @Post('theses/:id/assignments/tiebreaker')
+  @Roles(Role.COORDINATOR)
+  tiebreaker(
+    @Param('id', ParseObjectIdPipe) id: string,
+    @Body() dto: AssignTiebreakerDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.assignments.assignTiebreaker(
+      id,
+      dto,
+      actorFrom(user, Role.COORDINATOR),
+    );
   }
 
   @Get('theses/:id/assignments')
