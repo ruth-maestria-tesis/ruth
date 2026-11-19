@@ -13,6 +13,8 @@ const { programName } = useCatalogs();
 const evaluations = ref<Evaluation[]>([]);
 const file = ref<File | File[] | null>(null);
 const uploading = ref(false);
+/** Direct (Blob) upload progress, 0–100; null when not reported. */
+const progress = ref<number | null>(null);
 
 onMounted(async () => {
   await load();
@@ -23,13 +25,14 @@ async function upload() {
   if (!f || !thesis.value) return;
   uploading.value = true;
   try {
-    thesis.value = await thesesApi.uploadManuscript(thesis.value.id, f);
+    thesis.value = await thesesApi.uploadManuscript(thesis.value.id, f, (p) => (progress.value = p));
     file.value = null;
     ui.notify('Nueva versión del manuscrito cargada.');
   } catch (e) {
     ui.error(e);
   } finally {
     uploading.value = false;
+    progress.value = null;
   }
 }
 </script>
@@ -96,6 +99,7 @@ async function upload() {
               <v-file-input v-model="file" label="Cargar nueva versión (PDF)" accept="application/pdf" prepend-icon="" prepend-inner-icon="mdi-upload" hide-details show-size />
               <v-btn color="primary" :disabled="!file" :loading="uploading" height="48" @click="upload">Subir</v-btn>
             </div>
+            <v-progress-linear v-if="progress !== null" :model-value="progress" color="primary" height="6" rounded class="mt-2" />
           </v-card>
         </v-col>
       </v-row>

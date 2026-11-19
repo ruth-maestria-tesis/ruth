@@ -40,7 +40,7 @@ View `EvaluationView`:
 | `GET /assignments/:id/evaluation` | assignment owner | Their evaluation, or `null` (204 is not used) |
 | `PUT /assignments/:id/evaluation` | assignment owner, assignment `ACCEPTED` | Draft upsert `{ rubric?, verdict?, comments? }` → `EvaluationView`. 409 `EVALUATION_LOCKED` after submit; 409 `EVALUATION_NOT_ALLOWED` if not ACCEPTED |
 | `POST /assignments/:id/evaluation/submit` | assignment owner | Requires a full rubric (PRIMARY), a verdict and comments of at least 20 chars. Otherwise 400 `EVALUATION_INCOMPLETE`. Then runs RN-08 (below) |
-| `POST /evaluations/:id/corrections` | the author, while DRAFT | multipart `file` (pdf/doc/docx, ≤25 MB) → `EvaluationView` |
+| `POST /evaluations/:id/corrections` | the author, while DRAFT | multipart `file` (pdf/doc/docx, ≤25 MB) → `EvaluationView`. Large files: the direct upload of §14 (`/corrections/uploads`, `/corrections/uploads/complete`) |
 | `GET /evaluations/:id` | as for the list | Logs `VIEW` when a STUDENT reads it |
 | `GET /evaluations/:id/files/:fileId` | as for the list | Download; logs `DOWNLOAD` for a STUDENT |
 | `POST /theses/:id/evaluation-outcome/reconcile` | COORDINATOR, ADMIN | No body. Re-applies RN-08 from the stored evaluations (retry after a failed transition). Idempotent. 200 `{ thesisId, status, changed }`, where `changed` is true when this call moved the thesis. 409 `EVALUATION_NOT_COMPLETE` while neither both PRIMARY nor the TIEBREAKER evaluation is SUBMITTED |
@@ -208,7 +208,7 @@ Listeners (Spanish title and body; `link` is a client route):
   - `GET /auth/me`, `POST /auth/logout`
   - `GET /assignments/mine`, `GET /assignments/:id`, `POST /assignments/:id/accept`, `POST /assignments/:id/decline`
   - `GET /theses/:id` (PENDING: metadata, `manuscripts: []`; ACCEPTED: with manuscripts), `GET /theses/:id/manuscripts/:fileId` (ACCEPTED)
-  - `GET /theses/:id/evaluations`, `GET`/`PUT /assignments/:id/evaluation`, `POST /assignments/:id/evaluation/submit`, `POST /evaluations/:id/corrections`, `GET /evaluations/:id`, `GET /evaluations/:id/files/:fileId`
+  - `GET /theses/:id/evaluations`, `GET`/`PUT /assignments/:id/evaluation`, `POST /assignments/:id/evaluation/submit`, `POST /evaluations/:id/corrections` (and its `/uploads`, `/uploads/complete`, §14), `GET /evaluations/:id`, `GET /evaluations/:id/files/:fileId`
   - `GET /theses/:id/feedback`, `GET /theses/:id/feedback/summary`, `POST /theses/:id/feedback`, `POST /feedback/:id/resolve`, `POST /feedback/:id/reopen`, `POST /feedback/:id/comment`
   - `GET /theses/:id/defense`, `GET /defenses/:id`, `POST /defenses/:id/confirm`
   - `GET /theses/:id/minutes`, `GET /minutes/:id`, `POST /minutes/:id/sign`, `GET /minutes/:id/pdf`
@@ -307,3 +307,36 @@ ADMIN only (not `@AllowScoped`; scoped external sessions cannot reach it). For t
   - `reconcile`: theses processed by the assignment and RN-08 (evaluation outcome) reconcile passes.
   - The other three: notification batches sent (assignments or evaluations notified).
 - It runs with the real clock; jobs are idempotent, so repeating it returns 0 for what was already sent.
+
+## 14. File storage and direct uploads (Vercel Blob)
+
+Vercel functions cap request and response bodies at 4.5 MB, so in production the bytes of manuscripts and correction files move directly between the browser and a **private** Vercel Blob store. The API only authorizes, verifies and registers them.
+
+**Driver.** `STORAGE_DRIVER` = `gridfs` (default: local work and every test) or `vercel-blob` (production; needs `BLOB_READ_WRITE_TOKEN`).
+- File metadata always stays in Mongo, in `files.files` (the GridFS files collection): `filename`, `length`, `metadata.{ ownerId, thesisId, kind, mimeType, sha256, seedTag? }`, plus `metadata.storage: 'gridfs' | 'blob'` (missing = `gridfs`) and `metadata.blobPathname` for blob files. A unique partial index on `metadata.blobPathname` allows one registration per blob.
+- Buffer uploads (the multipart routes, the sealed minutes PDF, the seed) always go to GridFS, in both modes. Only direct uploads go to Blob. Files already in GridFS (the demo seed) keep working after the switch.
+
+**Direct upload** (manuscripts: `base = /theses/:id/manuscripts`, COORDINATOR or the owner STUDENT, thesis not closed; corrections: `base = /evaluations/:id/corrections`, the author juror within the session scope, evaluation DRAFT). Each step runs the same authorization as the multipart `POST base`.
+
+| Step | Request | Response |
+|---|---|---|
+| 1 | `POST base/uploads` `{ fileName, size, contentType }` | 200 `{ strategy: 'DIRECT', clientToken, pathname, expiresAt }`, or `{ strategy: 'MULTIPART' }` with the gridfs driver (the client then uses `POST base` unchanged) |
+| 2 | browser → Blob: `put(pathname, file, { access: 'private', token: clientToken, contentType })` from `@vercel/blob/client` | the blob |
+| 3 | `POST base/uploads/complete` `{ pathname, fileName }` | 201, same body as `POST base` (`Thesis` view after upload / `EvaluationView`) |
+
+- Step 1 validates `size ≤ 25 MB` (413 `FILE_TOO_LARGE`) and `contentType` (manuscripts: PDF; corrections: PDF, DOC, DOCX; else 415 `FILE_TYPE_NOT_ALLOWED`). `size` must be an integer ≥ 1 (400).
+- `pathname` = `manuscripts/<thesisId>/<uuid>-<size>.pdf` or `corrections/<evaluationId>/<uuid>-<size>.<pdf|doc|docx>`: random, unguessable, and it carries the declared size so step 3 needs no server state.
+- `clientToken` is valid for 10 minutes and limited to that pathname, that content type and `maximumSizeInBytes = size`; no overwrite, no random suffix.
+- Step 3 refuses with 400 `FILE_UPLOAD_INVALID`, without touching the blob: the gridfs driver, a pathname outside this resource's prefix or not of the shape above, or a blob already registered. Then it checks the blob:
+  - missing → 400 `FILE_REQUIRED`;
+  - larger than 25 MB → 413 `FILE_TOO_LARGE`; another size than declared → 400 `FILE_UPLOAD_INVALID`;
+  - type by magic bytes (`%PDF-`; OLE; ZIP with the Word parts, read from the first and last 64 KB) not allowed → 415 `FILE_TYPE_NOT_ALLOWED`.
+  - On these three the blob is deleted. The server reads the blob once to compute `sha256` (as GridFS uploads do).
+- Then the same domain logic as the multipart route: a new manuscript version (`manuscriptSeq`, `currentManuscriptId`, 409 `MANUSCRIPT_CONFLICT`) or a new correction file. If that fails, the file (blob and metadata) is deleted.
+- A blob uploaded but never completed stays orphaned in the store (no cleanup job in the MVP).
+
+**Downloads.** `GET /theses/:id/manuscripts/:fileId`, `GET /evaluations/:id/files/:fileId` and `GET /minutes/:id/pdf` keep their URL and authorization.
+- GridFS file: streamed as an attachment, as before (`?as=url` is ignored).
+- Blob file: `302` to a presigned GET URL valid 5 minutes and limited to that pathname, with `Cache-Control: no-store`. The Blob host sends `Content-Disposition: inline; filename="<uuid>.<ext>"` (the SDK cannot set it per URL).
+- Blob file with `?as=url`: 200 `{ url, expiresAt }`, `Cache-Control: no-store`. The SPA uses this: a `fetch` with `credentials: 'include'` cannot follow a redirect to the Blob host (it answers `Access-Control-Allow-Origin: *`), so the client fetches the URL with `credentials: 'omit'` and keeps showing the PDF from an object URL and saving with the real file name.
+

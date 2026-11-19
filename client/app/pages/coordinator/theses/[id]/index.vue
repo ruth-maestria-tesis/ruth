@@ -25,6 +25,8 @@ const linksOpen = ref(false);
 const links = ref<ExternalLink[]>([]);
 const uploadFile = ref<File | File[] | null>(null);
 const uploading = ref(false);
+/** Direct (Blob) upload progress, 0–100; null when not reported. */
+const progress = ref<number | null>(null);
 
 async function loadAssignments() {
   try {
@@ -124,13 +126,14 @@ async function upload() {
   if (!f) return;
   uploading.value = true;
   try {
-    thesis.value = await thesesApi.uploadManuscript(id.value, f);
+    thesis.value = await thesesApi.uploadManuscript(id.value, f, (p) => (progress.value = p));
     uploadFile.value = null;
     ui.notify('Nueva versión del manuscrito cargada.');
   } catch (e) {
     ui.error(e);
   } finally {
     uploading.value = false;
+    progress.value = null;
   }
 }
 const isExternalJuror = (a: Assignment) => a.juror?.roles.includes(Role.EXTERNAL_JUROR) && !a.juror?.roles.includes(Role.INTERNAL_JUROR);
@@ -199,6 +202,7 @@ const isExternalJuror = (a: Assignment) => a.juror?.roles.includes(Role.EXTERNAL
               <v-file-input v-model="uploadFile" label="Cargar nueva versión (PDF)" accept="application/pdf" prepend-icon="" prepend-inner-icon="mdi-upload" hide-details show-size />
               <v-btn color="primary" :disabled="!uploadFile" :loading="uploading" height="48" @click="upload">Subir</v-btn>
             </div>
+            <v-progress-linear v-if="canManage && progress !== null" :model-value="progress" color="primary" height="6" rounded class="mt-2" />
           </v-card>
         </v-col>
 
