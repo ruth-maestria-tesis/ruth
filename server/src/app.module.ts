@@ -6,6 +6,8 @@ import { JwtModule } from '@nestjs/jwt';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AssignmentsModule } from './assignments/assignments.module';
+import { AuditModule } from './audit/audit.module';
+import { ReportsModule } from './reports/reports.module';
 import { AuthModule } from './auth/auth.module';
 import { CatalogsModule } from './catalogs/catalogs.module';
 import { EvaluationsModule } from './evaluations/evaluations.module';
@@ -62,6 +64,8 @@ import { WorkflowModule } from './workflow/workflow.module';
     EvaluationsModule,
     DashboardModule,
     TraceabilityModule,
+    ReportsModule,
+    AuditModule,
   ],
   controllers: [HealthController],
   providers: [

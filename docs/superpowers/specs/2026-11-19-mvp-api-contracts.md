@@ -210,3 +210,32 @@ Listeners (Spanish title and body; `link` is a client route):
 - 6 internal jurors, 3 external jurors, 15 students
 
 It also creates theses across every status, with coherent assignments, evaluations, feedback, defenses and minutes. Every document gets `seedTag: 'DEMO'`; `--reset` deletes only `seedTag` documents.
+
+## 11. reports (CU-09) — module `reports`
+
+All three endpoints: COORDINATOR, ADMIN (403 for others). Filters are the same as `GET /theses`, **without pagination** (`page` and `limit` are rejected with 400): `programId`, `periodId`, `cohortId`, `status`, `q`, `codePrefix`, `seedTag`, `sort` (`code|title|student|status|progress|createdAt`), `order` (`asc|desc`). Capped at 2000 rows.
+
+- `GET /reports/theses.xlsx` → binary, `Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, `Content-Disposition: attachment; filename="tesis-YYYYMMDD.xlsx"` (date in America/Bogota). Sheet `Tesis`; bold header, frozen first row, autofilter.
+- `GET /reports/theses.pdf` → `application/pdf`, `attachment; filename="tesis-YYYYMMDD.pdf"`. A4 landscape, with title, generation date, applied filters and a table with page breaks.
+- Columns in both: Código, Título, Estudiante, Director(a), Programa (code), Periodo (code), Estado (Spanish label), Jurados (active assignments, comma separated), Fecha de radicación, Última actualización (`dd/mm/yyyy` in the PDF, plus `hh:mm` in the xlsx, America/Bogota).
+- The client downloads with a plain link or `window.location` to `/api/reports/theses.xlsx?…` (the auth cookie is sent), not with `fetch` and JSON.
+- `GET /reports/summary` (same filters) →
+```ts
+{ total: number,
+  byStatus:  { status: ThesisStatus, label: string /* Spanish */, count: number }[],
+  byProgram: { id, code?, name?, count }[],
+  byPeriod:  { id, code?, count }[] }   // each list sorted by count desc
+```
+
+## 12. audit (CU-09, RNF-04) — module `audit`
+
+`GET /audit-logs` (ADMIN, COORDINATOR). Query: `page`, `limit` (max 100), `actorId` (ObjectId), `entityType`, `entityId`, `action` (exact), `from`, `to` (ISO 8601, inclusive, on `at`). Always newest first (`sort`/`order` are ignored). Response `{ items, total, page, limit }`:
+```ts
+AuditLog = { id, at, actorId?, actorRoles: Role[], action: string, method?, path?,
+             entityType?, entityId?, statusCode?, ip?, userAgent?, meta?: Record<string, string|number|boolean|string[]> }
+```
+- Recorded by a global interceptor for every **successful** POST/PUT/PATCH/DELETE by an authenticated user. `action` is `"<METHOD> <route pattern without /api>"`, e.g. `PATCH /theses/:id`, `POST /theses/:id/assignments`. `path` is the concrete path.
+- `entityType` is the first static segment of the route (`theses`, `assignments`, `minutes`…); `entityId` is the route `:id` (on a create, the `id` of the response).
+- Explicit events: `AUTH_LOGIN_SUCCESS` (actor set), `AUTH_LOGIN_FAILURE` (`meta.email` = attempted e-mail, `statusCode` 401/403), `AUTH_LOGOUT`. All have `entityType: 'auth'`.
+- `meta` only holds allow-listed body fields (`to`, `verdict`, `status`, `decision`, `modality`, `type`, `isActive`, `role`, `roles`). Passwords, tokens and free text are never stored.
+- Writes are fire-and-forget (a failure is logged, never fails the request), so an entry may take a few ms to appear. The collection is insert-only: no update/delete endpoints, and the schema throws on any update or delete.
