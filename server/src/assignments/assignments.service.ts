@@ -8,6 +8,7 @@ import {
   AssignmentType,
   ErrorCode,
   isExternalOnly,
+  Role,
   ThesisStatus,
 } from '@thesis/shared';
 import { FilterQuery, isObjectIdOrHexString, Model, Types } from 'mongoose';
@@ -137,6 +138,15 @@ const jurorSummary = (u: UserDocument): JurorSummary => ({
   isUnicordoba: u.jurorProfile?.isUnicordoba,
 });
 
+const jurorVisibleSummary = (
+  a: AssignmentDocument,
+  summary: ThesisSummary | undefined,
+): ThesisSummary | undefined =>
+  ACTIVE_ASSIGNMENT_STATUSES.includes(a.status) &&
+  summary?.status !== ThesisStatus.SUBMITTED
+    ? summary
+    : undefined;
+
 @Injectable()
 export class AssignmentsService {
   private readonly logger = new Logger(AssignmentsService.name);
@@ -253,13 +263,17 @@ export class AssignmentsService {
       .find(filter)
       .sort({ assignedAt: -1, _id: -1 })
       .exec();
-    return this.views(docs, { withThesis: true });
+    return this.views(docs, { withThesis: 'jurorScoped' });
   }
 
   async findOneView(id: string, user: AuthUser): Promise<AssignmentView> {
     const doc = await this.findViewable(id, user);
+    const staff =
+      !user.scope &&
+      (user.roles.includes(Role.ADMIN) ||
+        user.roles.includes(Role.COORDINATOR));
     const [view] = await this.views([doc], {
-      withThesis: true,
+      withThesis: staff ? true : 'jurorScoped',
       withJuror: true,
     });
     return view;
@@ -293,7 +307,14 @@ export class AssignmentsService {
 
   async views(
     docs: readonly AssignmentDocument[],
-    opts: { withJuror?: boolean; withThesis?: boolean } = {},
+    opts: {
+      withJuror?: boolean;
+      /**
+       * 'jurorScoped': only for PENDING/ACCEPTED assignments on a thesis past SUBMITTED, the
+       * cases in which the juror may read the thesis (thesis-access policy).
+       */
+      withThesis?: boolean | 'jurorScoped';
+    } = {},
   ): Promise<AssignmentView[]> {
     const now = new Date();
     const holidays = await this.settings.holidaySet();
@@ -312,7 +333,10 @@ export class AssignmentsService {
     return docs.map((d) => ({
       ...toAssignmentView(withId(d), now, holidays),
       juror: jurors?.get(d.jurorId.toHexString()),
-      thesis: theses?.get(d.thesisId.toHexString()),
+      thesis:
+        opts.withThesis === 'jurorScoped'
+          ? jurorVisibleSummary(d, theses?.get(d.thesisId.toHexString()))
+          : theses?.get(d.thesisId.toHexString()),
     }));
   }
 

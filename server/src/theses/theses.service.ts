@@ -188,6 +188,17 @@ export class ThesesService {
       .exec();
   }
 
+  /** Ids of the theses currently in one of `statuses` (scheduled reconciliation). */
+  async findIdsByStatuses(
+    statuses: readonly ThesisStatus[],
+  ): Promise<Types.ObjectId[]> {
+    const rows = await this.model
+      .find({ status: { $in: statuses } }, { _id: 1 })
+      .lean()
+      .exec();
+    return rows.map((r) => r._id);
+  }
+
   /** 404 (not 403) for theses the user may not read, so ids cannot be probed. */
   async findReadable(id: string, user: AuthUser): Promise<ThesisDocument> {
     const thesis = await this.findById(id);

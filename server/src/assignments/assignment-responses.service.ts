@@ -1,4 +1,4 @@
-import { HttpStatus, Injectable } from '@nestjs/common';
+import { HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import {
   AssignmentStatus,
@@ -17,16 +17,16 @@ import { ThesesService } from '../theses/theses.service';
 import { WorkflowService } from '../workflow/workflow.service';
 import { ASSIGNMENT_EVENTS } from './assignment.events';
 import { AssignmentView } from './assignment-view';
-import { AssignmentsService, thesisStatusError } from './assignments.service';
+import {
+  assignmentNotFound,
+  AssignmentsService,
+  thesisStatusError,
+} from './assignments.service';
 import { Assignment, AssignmentDocument } from './schemas/assignment.schema';
 import { isWorkflowRace } from './workflow-race';
 
-/**
- * Thesis statuses in which a juror may answer. A SUBMITTED thesis only holds assignments while
- * a CU-01 is in flight (or orphans of a failed one, cleared by the next CU-01): they must stay
- * PENDING and active so that cleanup still finds them.
- */
-const RESPONDING_THESIS_STATUSES: readonly ThesisStatus[] = [
+/** Thesis statuses in which the primary jury is still being formed (not both accepted yet). */
+const JURY_FORMING_STATUSES: readonly ThesisStatus[] = [
   ThesisStatus.JURORS_ASSIGNED,
   ThesisStatus.PENDING_JUROR_REPLACEMENT,
 ];
@@ -38,8 +38,33 @@ const notPending = () =>
     'The assignment was already answered',
   );
 
+const deadlinePassed = () =>
+  new AppException(
+    ErrorCode.ASSIGNMENT_DEADLINE_PASSED,
+    HttpStatus.CONFLICT,
+    'The response deadline has passed',
+  );
+
+/** Why an assignment can no longer be answered (expired wins over "already answered"). */
+const responseError = (
+  a: Pick<Assignment, 'status' | 'responseDeadline'>,
+  now: Date,
+): AppException | undefined => {
+  if (
+    a.status === AssignmentStatus.EXPIRED ||
+    (a.status === AssignmentStatus.PENDING && a.responseDeadline < now)
+  )
+    return deadlinePassed();
+  if (a.status !== AssignmentStatus.PENDING) return notPending();
+  return undefined;
+};
+
+const stack = (e: unknown) => (e instanceof Error ? e.stack : String(e));
+
 @Injectable()
 export class AssignmentResponsesService {
+  private readonly logger = new Logger(AssignmentResponsesService.name);
+
   constructor(
     @InjectModel(Assignment.name) private readonly model: Model<Assignment>,
     private readonly assignments: AssignmentsService,
@@ -76,9 +101,11 @@ export class AssignmentResponsesService {
         { new: true },
       )
       .exec();
-    if (!updated) throw notPending();
+    if (!updated) throw await this.lostResponseError(current._id, now);
     this.assignments.emit(ASSIGNMENT_EVENTS.ACCEPTED, updated, actor);
-    await this.advanceIfJuryAccepted(updated.thesisId, actor);
+    await this.afterWrite(updated, 'advance to UNDER_EVALUATION', () =>
+      this.advanceIfJuryAccepted(updated.thesisId, actor),
+    );
     const [view] = await this.assignments.views([updated]);
     return view;
   }
@@ -111,12 +138,14 @@ export class AssignmentResponsesService {
         { new: true, runValidators: true },
       )
       .exec();
-    if (!updated) throw notPending();
+    if (!updated) throw await this.lostResponseError(current._id, now);
     this.assignments.emit(ASSIGNMENT_EVENTS.DECLINED, updated, actor, reason);
-    await this.markNeedsReplacement(
-      updated.thesisId,
-      actor,
-      'CU-08 FA-01: juror declined',
+    await this.afterWrite(updated, 'mark PENDING_JUROR_REPLACEMENT', () =>
+      this.markNeedsReplacement(
+        updated.thesisId,
+        actor,
+        'CU-08 FA-01: juror declined',
+      ),
     );
     const [view] = await this.assignments.views([updated]);
     return view;
@@ -124,8 +153,8 @@ export class AssignmentResponsesService {
 
   /**
    * CU-08 FA-02. Called hourly by the scheduler (stage 8). Returns how many expired.
-   * Assignments of theses outside RESPONDING_THESIS_STATUSES (a CU-01 in flight or its
-   * orphans) are left alone.
+   * Assignments of a SUBMITTED thesis (a CU-01 in flight, or its orphans) are left alone.
+   * Also reconciles theses whose advance to UNDER_EVALUATION was lost after both accepts.
    */
   async expirePending(now = new Date()): Promise<number> {
     const overdue = await this.model
@@ -134,19 +163,18 @@ export class AssignmentResponsesService {
         responseDeadline: { $lt: now },
       })
       .exec();
-    if (!overdue.length) return 0;
-    const responding = new Set(
+    const submitted = new Set(
       (
         await this.theses.findManyByIds([
           ...new Set(overdue.map((a) => a.thesisId.toHexString())),
         ])
       )
-        .filter((t) => RESPONDING_THESIS_STATUSES.includes(t.status))
+        .filter((t) => t.status === ThesisStatus.SUBMITTED)
         .map((t) => t.id as string),
     );
     let expired = 0;
     for (const a of overdue) {
-      if (!responding.has(a.thesisId.toHexString())) continue;
+      if (submitted.has(a.thesisId.toHexString())) continue;
       const updated = await this.model
         .findOneAndUpdate(
           { _id: a._id, status: AssignmentStatus.PENDING },
@@ -162,12 +190,20 @@ export class AssignmentResponsesService {
         SYSTEM_ACTOR,
         'Response deadline expired',
       );
-      await this.markNeedsReplacement(
-        updated.thesisId,
-        SYSTEM_ACTOR,
-        'CU-08 FA-02: response deadline expired',
+      if (updated.type !== AssignmentType.PRIMARY) continue;
+      await this.afterWrite(
+        updated,
+        'mark PENDING_JUROR_REPLACEMENT',
+        () =>
+          this.markNeedsReplacement(
+            updated.thesisId,
+            SYSTEM_ACTOR,
+            'CU-08 FA-02: response deadline expired',
+          ),
+        false,
       );
     }
+    await this.reconcileAcceptedJuries();
     return expired;
   }
 
@@ -175,20 +211,49 @@ export class AssignmentResponsesService {
     a: AssignmentDocument,
     now: Date,
   ): Promise<void> {
-    if (a.status !== AssignmentStatus.PENDING) throw notPending();
-    if (a.responseDeadline < now) {
-      throw new AppException(
-        ErrorCode.ASSIGNMENT_DEADLINE_PASSED,
-        HttpStatus.CONFLICT,
-        'The response deadline has passed',
-      );
-    }
+    const error = responseError(a, now);
+    if (error) throw error;
     const thesis = await this.theses.findById(a.thesisId.toHexString());
-    if (!RESPONDING_THESIS_STATUSES.includes(thesis.status))
+    // SUBMITTED only holds assignments of a CU-01 in flight or its orphans; they must stay
+    // PENDING and active so that the orphan cleanup still finds them.
+    if (thesis.status === ThesisStatus.SUBMITTED)
       throw thesisStatusError(thesis.status);
   }
 
-  /** Both primary jurors accepted → UNDER_EVALUATION. A losing concurrent accept is ignored. */
+  /** The conditional update matched nothing: answer from what is stored now. */
+  private async lostResponseError(
+    id: Types.ObjectId,
+    now: Date,
+  ): Promise<AppException> {
+    const fresh = await this.model
+      .findById(id, { status: 1, responseDeadline: 1 })
+      .exec();
+    if (!fresh) return assignmentNotFound();
+    return responseError(fresh, now) ?? notPending();
+  }
+
+  /**
+   * Runs the thesis step that follows a committed assignment write. A failure is logged with
+   * the ids (the assignment change stays); `rethrow` decides whether the caller sees it.
+   */
+  private async afterWrite(
+    a: AssignmentDocument,
+    step: string,
+    fn: () => Promise<void>,
+    rethrow = true,
+  ): Promise<void> {
+    try {
+      await fn();
+    } catch (e) {
+      this.logger.error(
+        `Assignment ${a.id as string} (thesis ${a.thesisId.toHexString()}) was saved as ${a.status} but the thesis step "${step}" failed`,
+        stack(e),
+      );
+      if (rethrow) throw e;
+    }
+  }
+
+  /** Both active primary jurors accepted → UNDER_EVALUATION. A losing concurrent accept is ignored. */
   private async advanceIfJuryAccepted(
     thesisId: Types.ObjectId,
     actor: Actor,
@@ -198,13 +263,14 @@ export class AssignmentResponsesService {
         thesisId,
         type: AssignmentType.PRIMARY,
         status: AssignmentStatus.ACCEPTED,
+        isActive: true,
       })
       .exec();
     if (accepted < 2) return;
     try {
       await this.workflow.transition({
         thesisId: thesisId.toHexString(),
-        expectedFrom: RESPONDING_THESIS_STATUSES,
+        expectedFrom: JURY_FORMING_STATUSES,
         to: ThesisStatus.UNDER_EVALUATION,
         actor,
         reason: 'CU-08: both jurors accepted',
@@ -214,22 +280,71 @@ export class AssignmentResponsesService {
     }
   }
 
-  /** JURORS_ASSIGNED → PENDING_JUROR_REPLACEMENT; no-op when the thesis is already waiting. */
+  /**
+   * JURORS_ASSIGNED → PENDING_JUROR_REPLACEMENT; no-op when the thesis is already waiting.
+   * If the transition loses a race (e.g. a replacement moved the thesis back to
+   * JURORS_ASSIGNED meanwhile) and a primary slot is still empty, it is retried once.
+   */
   private async markNeedsReplacement(
     thesisId: Types.ObjectId,
     actor: Actor,
     reason: string,
   ): Promise<void> {
-    try {
-      await this.workflow.transition({
-        thesisId: thesisId.toHexString(),
-        expectedFrom: [ThesisStatus.JURORS_ASSIGNED],
-        to: ThesisStatus.PENDING_JUROR_REPLACEMENT,
-        actor,
-        reason,
-      });
-    } catch (e) {
-      if (!isWorkflowRace(e)) throw e;
+    const attempt = async (): Promise<boolean> => {
+      try {
+        await this.workflow.transition({
+          thesisId: thesisId.toHexString(),
+          expectedFrom: [ThesisStatus.JURORS_ASSIGNED],
+          to: ThesisStatus.PENDING_JUROR_REPLACEMENT,
+          actor,
+          reason,
+        });
+        return true;
+      } catch (e) {
+        if (!isWorkflowRace(e)) throw e;
+        return false;
+      }
+    };
+    if (await attempt()) return;
+    const thesis = await this.theses.findById(thesisId.toHexString());
+    if (thesis.status !== ThesisStatus.JURORS_ASSIGNED) return;
+    const active = await this.model
+      .countDocuments({
+        thesisId,
+        type: AssignmentType.PRIMARY,
+        isActive: true,
+      })
+      .exec();
+    if (active < 2) await attempt();
+  }
+
+  /** Heals a lost advance: theses still forming a jury whose two active primaries accepted. */
+  private async reconcileAcceptedJuries(): Promise<void> {
+    const forming = await this.theses.findIdsByStatuses(JURY_FORMING_STATUSES);
+    if (!forming.length) return;
+    const rows = await this.model
+      .aggregate<{ _id: Types.ObjectId }>([
+        {
+          $match: {
+            thesisId: { $in: forming },
+            type: AssignmentType.PRIMARY,
+            status: AssignmentStatus.ACCEPTED,
+            isActive: true,
+          },
+        },
+        { $group: { _id: '$thesisId', n: { $sum: 1 } } },
+        { $match: { n: { $gte: 2 } } },
+      ])
+      .exec();
+    for (const { _id: thesisId } of rows) {
+      try {
+        await this.advanceIfJuryAccepted(thesisId, SYSTEM_ACTOR);
+      } catch (e) {
+        this.logger.error(
+          `Reconcile: thesis ${thesisId.toHexString()} could not advance to UNDER_EVALUATION`,
+          stack(e),
+        );
+      }
     }
   }
 }

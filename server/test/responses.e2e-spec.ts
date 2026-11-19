@@ -1,7 +1,9 @@
 import { INestApplication } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { getModelToken } from '@nestjs/mongoose';
 import { AssignmentStatus, Role, ThesisStatus } from '@thesis/shared';
 import { Model } from 'mongoose';
+import { ASSIGNMENT_EVENTS } from '../src/assignments/assignment.events';
 import { AssignmentResponsesService } from '../src/assignments/assignment-responses.service';
 import { Assignment } from '../src/assignments/schemas/assignment.schema';
 import { Thesis } from '../src/theses/schemas/thesis.schema';
@@ -220,5 +222,109 @@ describe('Assignments — CU-08 (e2e)', () => {
     await admin.get(`/api/assignments/${a1}`).expect(200);
     await juror2.get(`/api/assignments/${a1}`).expect(404);
     await coordinator.get('/api/assignments/nope').expect(400);
+  });
+
+  it('a whitespace-only decline reason is rejected', async () => {
+    const { a1, juror1 } = await setup();
+    await juror1
+      .post(`/api/assignments/${a1}/decline`)
+      .send({ reason: '   ' })
+      .expect(400);
+    const res = await juror1
+      .post(`/api/assignments/${a1}/decline`)
+      .send({ reason: '  Viaje  ' })
+      .expect(200);
+    expect(res.body.declineReason).toBe('Viaje');
+  });
+
+  it('an accept that loses to the expiry gets ASSIGNMENT_DEADLINE_PASSED', async () => {
+    const { a1, juror1 } = await setup();
+    await assignments.updateOne(
+      { _id: a1 },
+      { responseDeadline: new Date(Date.now() - 1000) },
+    );
+    await app.get(AssignmentResponsesService).expirePending(new Date());
+    const res = await juror1.post(`/api/assignments/${a1}/accept`).expect(409);
+    expect(res.body.code).toBe('ASSIGNMENT_DEADLINE_PASSED');
+  });
+
+  it('emits the accepted, declined and expired events', async () => {
+    const emit = jest.spyOn(app.get(EventEmitter2), 'emit');
+    try {
+      const { a1, a2, juror1, juror2 } = await setup();
+      await juror1.post(`/api/assignments/${a1}/accept`).expect(200);
+      await juror2
+        .post(`/api/assignments/${a2}/decline`)
+        .send({ reason: 'Viaje' })
+        .expect(200);
+      const other = await setup();
+      await assignments.updateOne(
+        { _id: other.a1 },
+        { responseDeadline: new Date(Date.now() - 1000) },
+      );
+      await app.get(AssignmentResponsesService).expirePending(new Date());
+      expect(emit).toHaveBeenCalledWith(
+        ASSIGNMENT_EVENTS.ACCEPTED,
+        expect.objectContaining({
+          assignmentId: a1,
+          actorRole: Role.INTERNAL_JUROR,
+        }),
+      );
+      expect(emit).toHaveBeenCalledWith(
+        ASSIGNMENT_EVENTS.DECLINED,
+        expect.objectContaining({ assignmentId: a2, reason: 'Viaje' }),
+      );
+      expect(emit).toHaveBeenCalledWith(
+        ASSIGNMENT_EVENTS.EXPIRED,
+        expect.objectContaining({
+          assignmentId: other.a1,
+          actorRole: 'SYSTEM',
+        }),
+      );
+    } finally {
+      emit.mockRestore();
+    }
+  });
+
+  it('expirePending reconciles a jury whose advance to UNDER_EVALUATION was lost', async () => {
+    const { thesis, a1, a2 } = await setup();
+    await assignments.updateMany(
+      { _id: { $in: [a1, a2] } },
+      { status: AssignmentStatus.ACCEPTED },
+    );
+    await app.get(AssignmentResponsesService).expirePending(new Date());
+    const t = await theses.findById(thesis._id);
+    expect(t?.status).toBe(ThesisStatus.UNDER_EVALUATION);
+    expect(t?.history.at(-1)).toMatchObject({ actorRole: 'SYSTEM' });
+  });
+
+  it('thesis metadata is only attached for PENDING/ACCEPTED assignments past SUBMITTED', async () => {
+    const { thesis, a1, a2, juror1, juror2 } = await setup();
+    await juror1
+      .post(`/api/assignments/${a1}/decline`)
+      .send({ reason: 'Viaje' })
+      .expect(200);
+    const mine = await juror1.get('/api/assignments/mine').expect(200);
+    expect(mine.body).toHaveLength(1);
+    expect(mine.body[0].thesis).toBeUndefined();
+    const detail = await juror1.get(`/api/assignments/${a1}`).expect(200);
+    expect(detail.body.thesis).toBeUndefined();
+    // Staff still see the thesis of any assignment.
+    const staff = await coordinator.get(`/api/assignments/${a1}`).expect(200);
+    expect(staff.body.thesis).toMatchObject({ id: thesis.id });
+    // Pending assignment on a thesis back in SUBMITTED (orphan): no metadata either.
+    expect(
+      (await juror2.get('/api/assignments/mine').expect(200)).body[0].thesis,
+    ).toEqual(expect.objectContaining({ id: thesis.id }));
+    await theses.updateOne(
+      { _id: thesis._id },
+      { status: ThesisStatus.SUBMITTED },
+    );
+    expect(
+      (await juror2.get('/api/assignments/mine').expect(200)).body[0].thesis,
+    ).toBeUndefined();
+    expect(
+      (await juror2.get(`/api/assignments/${a2}`).expect(200)).body.thesis,
+    ).toBeUndefined();
   });
 });
