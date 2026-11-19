@@ -8,7 +8,9 @@ import {
   Role,
   ThesisStatus,
 } from '@thesis/shared';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
+import { SchedulerService } from '../src/scheduler/scheduler.service';
+import { WorkflowService } from '../src/workflow/workflow.service';
 import { Evaluation } from '../src/evaluations/schemas/evaluation.schema';
 import { Thesis } from '../src/theses/schemas/thesis.schema';
 import {
@@ -110,6 +112,7 @@ describe('Evaluations — CU-02 / RN-08 (e2e)', () => {
       evaluationId: sub.body.id,
       jurorId: jurors[0].id,
       verdict: EvaluationVerdict.APPROVED_FOR_DEFENSE,
+      resultingStatus: ThesisStatus.UNDER_EVALUATION,
       actor: { id: jurors[0].id, role: Role.INTERNAL_JUROR },
     });
 
@@ -389,5 +392,153 @@ describe('Evaluations — CU-02 / RN-08 (e2e)', () => {
     expect(stored?.studentAccessLog.map((l) => l.type)).toEqual(['DOWNLOAD']);
     expect(stored?.studentFirstDownloadedAt).toBeInstanceOf(Date);
     expect(stored?.studentFirstViewedAt).toBeUndefined();
+  });
+
+  it('stores null comments as an empty string and clears a null rubric and verdict', async () => {
+    const { a1, juror1 } = await setup();
+    await juror1
+      .put(`/api/assignments/${a1}/evaluation`)
+      .send({ ...FULL, verdict: EvaluationVerdict.APPROVED_FOR_DEFENSE })
+      .expect(200);
+    const res = await juror1
+      .put(`/api/assignments/${a1}/evaluation`)
+      .send({ comments: null, rubric: null, verdict: null })
+      .expect(200);
+    expect(res.body).toMatchObject({
+      comments: '',
+      rubric: null,
+      score: null,
+      verdict: null,
+    });
+    const again = await juror1
+      .put(`/api/assignments/${a1}/evaluation`)
+      .send({ comments: null })
+      .expect(200);
+    expect(again.body.comments).toBe('');
+  });
+
+  it('emits evaluation.submitted after RN-08 with the resulting status', async () => {
+    const { thesisId, a1, a2, jurors } = await setup();
+    const emitted = jest.spyOn(app.get(EventEmitter2), 'emit');
+    await submitEvaluation(
+      app,
+      a1,
+      jurors[0],
+      EvaluationVerdict.APPROVED_FOR_DEFENSE,
+    );
+    await submitEvaluation(
+      app,
+      a2,
+      jurors[1],
+      EvaluationVerdict.APPROVED_FOR_DEFENSE,
+    );
+    const calls = emitted.mock.calls.filter(
+      (c) => (c[1] as { thesisId?: string } | undefined)?.thesisId === thesisId,
+    );
+    const names = calls.map((c) => c[0]);
+    const submitted = calls.filter((c) => c[0] === 'evaluation.submitted');
+    expect(
+      submitted.map(
+        (c) => (c[1] as { resultingStatus: string }).resultingStatus,
+      ),
+    ).toEqual([ThesisStatus.UNDER_EVALUATION, ThesisStatus.READY_FOR_DEFENSE]);
+    // The status change is emitted before the last evaluation.submitted.
+    expect(names.indexOf('thesis.status.changed')).toBeLessThan(
+      names.lastIndexOf('evaluation.submitted'),
+    );
+    emitted.mockRestore();
+  });
+
+  it('reconciles a failed RN-08 through the endpoint and the scheduler pass', async () => {
+    const one = await setup();
+    const two = await setup();
+    const failing = jest
+      .spyOn(app.get(WorkflowService), 'transition')
+      .mockRejectedValue(new Error('db down'));
+    for (const fx of [one, two]) {
+      for (const i of [0, 1] as const)
+        await submitEvaluation(
+          app,
+          fx.assignmentIds[i],
+          fx.jurors[i],
+          EvaluationVerdict.APPROVED_FOR_DEFENSE,
+        );
+    }
+    failing.mockRestore();
+    expect(await status(one.thesisId)).toBe(ThesisStatus.UNDER_EVALUATION);
+
+    // Staff only; the juror gets 403.
+    await one.juror1
+      .post(`/api/theses/${one.thesisId}/evaluation-outcome/reconcile`)
+      .expect(403);
+    const res = await coordinator
+      .post(`/api/theses/${one.thesisId}/evaluation-outcome/reconcile`)
+      .expect(200);
+    expect(res.body).toMatchObject({
+      thesisId: one.thesisId,
+      status: ThesisStatus.READY_FOR_DEFENSE,
+      changed: true,
+    });
+    // Idempotent.
+    const again = await coordinator
+      .post(`/api/theses/${one.thesisId}/evaluation-outcome/reconcile`)
+      .expect(200);
+    expect(again.body).toMatchObject({
+      status: ThesisStatus.READY_FOR_DEFENSE,
+      changed: false,
+    });
+
+    expect(await status(two.thesisId)).toBe(ThesisStatus.UNDER_EVALUATION);
+    expect(
+      await app.get(SchedulerService).reconcileEvaluationOutcomes(),
+    ).toBeGreaterThanOrEqual(1);
+    expect(await status(two.thesisId)).toBe(ThesisStatus.READY_FOR_DEFENSE);
+  });
+
+  it('reconcile returns 409 EVALUATION_NOT_COMPLETE while an evaluation is missing', async () => {
+    const { thesisId, a1, jurors } = await setup();
+    await submitEvaluation(
+      app,
+      a1,
+      jurors[0],
+      EvaluationVerdict.APPROVED_FOR_DEFENSE,
+    );
+    const res = await coordinator
+      .post(`/api/theses/${thesisId}/evaluation-outcome/reconcile`)
+      .expect(409);
+    expect(res.body.code).toBe('EVALUATION_NOT_COMPLETE');
+    expect(await status(thesisId)).toBe(ThesisStatus.UNDER_EVALUATION);
+  });
+
+  it('a primary juror reads the other primary SUBMITTED evaluation', async () => {
+    const { thesisId, a1, juror2, jurors } = await setup();
+    const sub = await submitEvaluation(
+      app,
+      a1,
+      jurors[0],
+      EvaluationVerdict.APPROVED_FOR_DEFENSE,
+    );
+    await juror2.get(`/api/evaluations/${sub.id}`).expect(200);
+    const list = await juror2
+      .get(`/api/theses/${thesisId}/evaluations`)
+      .expect(200);
+    expect(list.body).toHaveLength(1);
+  });
+
+  it('a foreign fileId gets 404 on the evaluation file download', async () => {
+    const { a1, juror1, studentAgent } = await setup();
+    const draft = await juror1
+      .put(`/api/assignments/${a1}/evaluation`)
+      .send(FULL)
+      .expect(200);
+    await juror1
+      .post(`/api/assignments/${a1}/evaluation/submit`)
+      .send({ verdict: EvaluationVerdict.APPROVED_WITH_CHANGES })
+      .expect(200);
+    await studentAgent
+      .get(
+        `/api/evaluations/${draft.body.id}/files/${new Types.ObjectId().toHexString()}`,
+      )
+      .expect(404);
   });
 });

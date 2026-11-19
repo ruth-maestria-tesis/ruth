@@ -7,6 +7,7 @@ import {
   AssignmentStatus,
   AssignmentType,
   ErrorCode,
+  EvaluationStatus,
   isExternalOnly,
   JuryViolation,
   Role,
@@ -17,6 +18,7 @@ import { AppException } from '../common/errors/app.exception';
 import { addBusinessDays } from '../common/time/business-days';
 import type { Actor } from '../common/types/actor';
 import type { AuthUser } from '../common/types/auth-user';
+import { Evaluation } from '../evaluations/schemas/evaluation.schema';
 import { SettingsService } from '../settings/settings.service';
 import { ThesisDocument } from '../theses/schemas/thesis.schema';
 import { ThesesService } from '../theses/theses.service';
@@ -173,6 +175,8 @@ export class AssignmentsService {
 
   constructor(
     @InjectModel(Assignment.name) private readonly model: Model<Assignment>,
+    @InjectModel(Evaluation.name)
+    private readonly evaluations: Model<Evaluation>,
     private readonly theses: ThesesService,
     private readonly users: UsersService,
     private readonly workflow: WorkflowService,
@@ -282,6 +286,8 @@ export class AssignmentsService {
     actor: Actor,
   ): Promise<{ assignment: AssignmentView; externalLink?: ExternalLink }> {
     const thesis = await this.theses.findById(thesisId);
+    if (thesis.status === ThesisStatus.IN_DISPUTE)
+      return this.replaceTiebreaker(thesis, dto, actor);
     // Never on SUBMITTED: there, active assignments are taken as CU-01 orphans.
     if (
       thesis.status !== ThesisStatus.JURORS_ASSIGNED &&
@@ -376,6 +382,90 @@ export class AssignmentsService {
     return { assignment: view, externalLink: link };
   }
 
+  /**
+   * Replaces the tiebreaker of an IN_DISPUTE thesis (slot 3 stays a TIEBREAKER): PENDING,
+   * DECLINED or EXPIRED, or ACCEPTED while its evaluation is not SUBMITTED (a stuck
+   * tiebreaker). The old assignment is deactivated and its DRAFT evaluation deleted, so it
+   * never counts. The thesis status does not change.
+   */
+  private async replaceTiebreaker(
+    thesis: ThesisDocument,
+    dto: ReplaceAssignmentDto,
+    actor: Actor,
+  ): Promise<{ assignment: AssignmentView; externalLink?: ExternalLink }> {
+    const old = isObjectIdOrHexString(dto.assignmentId)
+      ? await this.model
+          .findOne({ _id: dto.assignmentId, thesisId: thesis._id })
+          .exec()
+      : null;
+    if (!old) throw assignmentNotFound();
+    // A primary is not replaceable while the thesis is being decided.
+    if (old.type !== AssignmentType.TIEBREAKER)
+      throw thesisStatusError(thesis.status);
+    const replaceable =
+      old.status === AssignmentStatus.PENDING ||
+      old.status === AssignmentStatus.ACCEPTED ||
+      ((old.status === AssignmentStatus.DECLINED ||
+        old.status === AssignmentStatus.EXPIRED) &&
+        !old.replacedById);
+    if (!replaceable)
+      throw notReplaceable(`A ${old.status} assignment cannot be replaced`);
+    if (await this.hasSubmittedEvaluation(old._id))
+      throw notReplaceable('The tiebreaker already submitted its evaluation');
+
+    const [candidate] = await this.resolveCandidates([dto.juror], () => 3);
+    const { previousJurorIds } = await this.juryHistory(thesis._id);
+    this.assertValid(
+      validateJury({
+        candidates: [candidate],
+        parties: partiesOf(thesis),
+        previousJurorIds,
+        required: 1,
+        requireUnicordoba: false,
+      }),
+    );
+
+    const settings = await this.settings.get();
+    const persisted = await this.persistReplacement(old, dto, settings, actor);
+    // Only a DRAFT is removed: a SUBMITTED evaluation was ruled out by the checks above.
+    await this.evaluations
+      .deleteMany({ assignmentId: old._id, status: EvaluationStatus.DRAFT })
+      .exec()
+      .catch((err: unknown) =>
+        this.logger.error(
+          `Could not delete the draft evaluation of replaced tiebreaker ${old.id as string}`,
+          err instanceof Error ? err.stack : String(err),
+        ),
+      );
+    const doc = persisted.doc;
+    this.emit(
+      ASSIGNMENT_EVENTS.REPLACED,
+      old,
+      actor,
+      `Replaced by ${doc.id as string}`,
+    );
+    this.emit(ASSIGNMENT_EVENTS.CREATED, doc, actor);
+    let link: ExternalLink | undefined;
+    try {
+      [link] = await this.linksForExternalJurors([doc]);
+    } catch (err) {
+      this.logger.error(
+        `Tiebreaker ${doc.id as string} was created but its external link could not be generated`,
+        err instanceof Error ? err.stack : String(err),
+      );
+    }
+    const [view] = await this.views([doc], { withJuror: true });
+    return { assignment: view, externalLink: link };
+  }
+
+  private async hasSubmittedEvaluation(
+    assignmentId: Types.ObjectId,
+  ): Promise<boolean> {
+    return !!(await this.evaluations
+      .exists({ assignmentId, status: EvaluationStatus.SUBMITTED })
+      .exec());
+  }
+
   private activePrimaries(
     thesisId: Types.ObjectId,
     exceptId?: Types.ObjectId,
@@ -404,10 +494,11 @@ export class AssignmentsService {
   ): Promise<{ doc: AssignmentDocument; created: Created }> {
     const newId = new Types.ObjectId();
     const marked =
-      old.status === AssignmentStatus.PENDING
+      old.status === AssignmentStatus.PENDING ||
+      old.status === AssignmentStatus.ACCEPTED
         ? await this.model
             .updateOne(
-              { _id: old._id, status: AssignmentStatus.PENDING },
+              { _id: old._id, status: old.status },
               {
                 $set: {
                   status: AssignmentStatus.REPLACED,
@@ -429,6 +520,14 @@ export class AssignmentsService {
             .exec();
     if (marked.modifiedCount === 0)
       throw notReplaceable('The assignment changed concurrently');
+    // A tiebreaker that submitted between the check and the mark keeps its slot.
+    if (
+      old.type === AssignmentType.TIEBREAKER &&
+      (await this.hasSubmittedEvaluation(old._id))
+    ) {
+      await this.restoreOld(old, newId);
+      throw notReplaceable('The tiebreaker already submitted its evaluation');
+    }
     try {
       // persist() removes what it created (inline user included) when it fails.
       const { docs, created } = await this.persist(
@@ -438,6 +537,7 @@ export class AssignmentsService {
         new Set(settings.holidays),
         actor,
         newId,
+        old.type,
       );
       return { doc: docs[0], created };
     } catch (err) {
@@ -564,9 +664,10 @@ export class AssignmentsService {
       await this.model
         .updateOne(
           { _id: old._id, replacedById: newId },
-          old.status === AssignmentStatus.PENDING
+          old.status === AssignmentStatus.PENDING ||
+            old.status === AssignmentStatus.ACCEPTED
             ? {
-                $set: { status: AssignmentStatus.PENDING, isActive: true },
+                $set: { status: old.status, isActive: true },
                 $unset: { replacedById: 1 },
               }
             : { $unset: { replacedById: 1 } },

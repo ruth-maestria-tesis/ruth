@@ -1,5 +1,9 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
+import {
+  Evaluation,
+  EvaluationSchema,
+} from '../evaluations/schemas/evaluation.schema';
 import { SettingsModule } from '../settings/settings.module';
 import { ThesesModule } from '../theses/theses.module';
 import { UsersModule } from '../users/users.module';
@@ -13,6 +17,7 @@ import { Assignment, AssignmentSchema } from './schemas/assignment.schema';
   imports: [
     MongooseModule.forFeature([
       { name: Assignment.name, schema: AssignmentSchema },
+      { name: Evaluation.name, schema: EvaluationSchema },
     ]),
     ThesesModule,
     UsersModule,

@@ -16,6 +16,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBody, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { Role } from '@thesis/shared';
 import type { Response } from 'express';
+import { actorFrom } from '../common/types/actor';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { ParseObjectIdPipe } from '../common/pipes/parse-object-id.pipe';
@@ -53,6 +54,20 @@ export class EvaluationsController {
   @Roles(Role.COORDINATOR, Role.ADMIN)
   dispute(@Param('id', ParseObjectIdPipe) id: string) {
     return this.evaluations.dispute(id);
+  }
+
+  /** RN-08 retry when the transition after the last submit failed; idempotent. */
+  @Post('theses/:id/evaluation-outcome/reconcile')
+  @HttpCode(200)
+  @Roles(Role.COORDINATOR, Role.ADMIN)
+  reconcile(
+    @Param('id', ParseObjectIdPipe) id: string,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.evaluations.reconcileOutcome(
+      id,
+      actorFrom(user, Role.COORDINATOR, Role.ADMIN),
+    );
   }
 
   /** The owner's evaluation, or a JSON `null` (never 204). */

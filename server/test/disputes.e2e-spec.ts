@@ -12,6 +12,7 @@ import {
 import { Model } from 'mongoose';
 import { AssignmentResponsesService } from '../src/assignments/assignment-responses.service';
 import { Assignment } from '../src/assignments/schemas/assignment.schema';
+import { Evaluation } from '../src/evaluations/schemas/evaluation.schema';
 import { Thesis } from '../src/theses/schemas/thesis.schema';
 import {
   closeTestApp,
@@ -167,10 +168,11 @@ describe('Disputes — CU-05 / RN-08 tiebreaker (e2e)', () => {
       .expect(400);
     expect(wrong.body.code).toBe('VALIDATION_FAILED');
     const primary = await loginAgent(app, jurors[1].email);
-    await primary
+    const locked = await primary
       .put(`/api/assignments/${assignmentIds[1]}/evaluation`)
       .send({ verdict: EvaluationVerdict.APPROVED_FOR_DEFENSE })
       .expect(409);
+    expect(locked.body.code).toBe('EVALUATION_LOCKED');
 
     // The rubric is optional for the tiebreaker.
     const sub = await tb.agent
@@ -288,6 +290,114 @@ describe('Disputes — CU-05 / RN-08 tiebreaker (e2e)', () => {
     expect(dispute.body.tiebreaker).toMatchObject({
       assignment: { jurorId: third.id, status: AssignmentStatus.PENDING },
       evaluation: null,
+    });
+  });
+
+  it('a PENDING tiebreaker gets 404 on the evaluations list', async () => {
+    const { thesisId } = await inDispute();
+    const user = await createUser(app, { roles: [Role.INTERNAL_JUROR] });
+    await coordinator
+      .post(`/api/theses/${thesisId}/assignments/tiebreaker`)
+      .send({ jurorId: user.id })
+      .expect(201);
+    const agent = await loginAgent(app, user.email);
+    await agent.get(`/api/theses/${thesisId}/evaluations`).expect(404);
+  });
+
+  it('replaces an ACCEPTED tiebreaker that has not submitted; its draft never counts', async () => {
+    const { thesisId } = await inDispute();
+    const tb = await acceptedTiebreaker(thesisId);
+    const draft = await tb.agent
+      .put(`/api/assignments/${tb.assignmentId}/evaluation`)
+      .send({ verdict: EvaluationVerdict.REJECTED })
+      .expect(200);
+
+    const next = await createUser(app, { roles: [Role.INTERNAL_JUROR] });
+    const res = await coordinator
+      .post(`/api/theses/${thesisId}/assignments/replace`)
+      .send({ assignmentId: tb.assignmentId, juror: { jurorId: next.id } })
+      .expect(201);
+    expect(res.body.assignment).toMatchObject({
+      type: AssignmentType.TIEBREAKER,
+      slot: 3,
+      jurorId: next.id,
+      status: AssignmentStatus.PENDING,
+    });
+    expect(await status(thesisId)).toBe(ThesisStatus.IN_DISPUTE);
+    expect(await assignments.findById(tb.assignmentId)).toMatchObject({
+      status: AssignmentStatus.REPLACED,
+      isActive: false,
+    });
+    expect(
+      await app
+        .get<Model<Evaluation>>(getModelToken(Evaluation.name))
+        .findById(draft.body.id),
+    ).toBeNull();
+    // The replaced juror can no longer evaluate.
+    await tb.agent
+      .put(`/api/assignments/${tb.assignmentId}/evaluation`)
+      .send({ verdict: EvaluationVerdict.REJECTED })
+      .expect(409);
+
+    const nextAgent = await loginAgent(app, next.email);
+    await nextAgent
+      .post(`/api/assignments/${res.body.assignment.id}/accept`)
+      .expect(200);
+    await nextAgent
+      .post(`/api/assignments/${res.body.assignment.id}/evaluation/submit`)
+      .send({ verdict: EvaluationVerdict.APPROVED, comments: COMMENTS })
+      .expect(200);
+    expect(await status(thesisId)).toBe(ThesisStatus.READY_FOR_DEFENSE);
+  });
+
+  it('does not replace a primary while IN_DISPUTE, nor a tiebreaker that already submitted', async () => {
+    const { thesisId, assignmentIds } = await inDispute();
+    const tb = await acceptedTiebreaker(thesisId);
+    const next = await createUser(app, { roles: [Role.INTERNAL_JUROR] });
+    await coordinator
+      .post(`/api/theses/${thesisId}/assignments/replace`)
+      .send({ assignmentId: assignmentIds[0], juror: { jurorId: next.id } })
+      .expect(409);
+    // Submitted tiebreaker, with the thesis forced back to IN_DISPUTE: still not replaceable.
+    await tb.agent
+      .post(`/api/assignments/${tb.assignmentId}/evaluation/submit`)
+      .send({ verdict: EvaluationVerdict.APPROVED, comments: COMMENTS })
+      .expect(200);
+    await theses.updateOne(
+      { _id: thesisId },
+      { $set: { status: ThesisStatus.IN_DISPUTE } },
+    );
+    const res = await coordinator
+      .post(`/api/theses/${thesisId}/assignments/replace`)
+      .send({ assignmentId: tb.assignmentId, juror: { jurorId: next.id } })
+      .expect(409);
+    expect(res.body.code).toBe('ASSIGNMENT_NOT_REPLACEABLE');
+  });
+
+  it('replaces a declined tiebreaker in the same slot', async () => {
+    const { thesisId } = await inDispute();
+    const u1 = await createUser(app, { roles: [Role.INTERNAL_JUROR] });
+    const first = await coordinator
+      .post(`/api/theses/${thesisId}/assignments/tiebreaker`)
+      .send({ jurorId: u1.id })
+      .expect(201);
+    await (
+      await loginAgent(app, u1.email)
+    )
+      .post(`/api/assignments/${first.body.assignment.id}/decline`)
+      .send({ reason: 'Sin disponibilidad' })
+      .expect(200);
+    const next = await createUser(app, { roles: [Role.INTERNAL_JUROR] });
+    const res = await coordinator
+      .post(`/api/theses/${thesisId}/assignments/replace`)
+      .send({
+        assignmentId: first.body.assignment.id,
+        juror: { jurorId: next.id },
+      })
+      .expect(201);
+    expect(res.body.assignment).toMatchObject({
+      type: AssignmentType.TIEBREAKER,
+      slot: 3,
     });
   });
 });

@@ -10,7 +10,10 @@ import {
 import { JurorInputDto } from './juror-input.dto';
 
 export class ReplaceAssignmentDto {
-  /** PENDING, DECLINED or EXPIRED primary assignment of this thesis. */
+  /**
+   * Primary (thesis JURORS_ASSIGNED / PENDING_JUROR_REPLACEMENT): PENDING, DECLINED or EXPIRED.
+   * Tiebreaker (thesis IN_DISPUTE): PENDING, DECLINED, EXPIRED, or ACCEPTED without a submitted evaluation.
+   */
   @IsMongoId()
   assignmentId!: string;
 

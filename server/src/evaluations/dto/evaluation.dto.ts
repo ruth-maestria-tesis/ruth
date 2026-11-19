@@ -31,21 +31,24 @@ export class RubricDto {
   writingQuality?: number;
 }
 
-/** Draft upsert; every field is optional and only the fields sent are changed. */
+/**
+ * Draft upsert; every field is optional and only the fields sent are changed. `comments: null`
+ * is stored as '', `rubric: null` clears the rubric and `verdict: null` clears the verdict.
+ */
 export class SaveEvaluationDto {
   @IsOptional()
   @ValidateNested()
   @Type(() => RubricDto)
-  rubric?: RubricDto;
+  rubric?: RubricDto | null;
 
   /** PRIMARY: APPROVED_FOR_DEFENSE | APPROVED_WITH_CHANGES | REJECTED; TIEBREAKER: APPROVED | REJECTED. */
   @IsOptional()
   @IsEnum(EvaluationVerdict)
-  verdict?: EvaluationVerdict;
+  verdict?: EvaluationVerdict | null;
 
   @IsOptional()
   @Transform(({ value }: { value: unknown }) =>
-    typeof value === 'string' ? value.trim() : value,
+    typeof value === 'string' ? value.trim() : value === null ? '' : value,
   )
   @IsString()
   @MaxLength(10000)
