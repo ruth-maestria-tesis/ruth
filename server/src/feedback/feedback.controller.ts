@@ -54,6 +54,17 @@ export class FeedbackController {
     return this.feedback.summary(id, user);
   }
 
+  /** Manual REVISIONS_IN_PROGRESS → READY_FOR_DEFENSE when no feedback is unresolved. */
+  @Post('theses/:id/ready-for-defense')
+  @HttpCode(200)
+  @Roles(Role.COORDINATOR)
+  readyForDefense(
+    @Param('id', ParseObjectIdPipe) id: string,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.feedback.markReadyForDefense(id, user);
+  }
+
   /** CU-06: a juror with an ACCEPTED assignment adds an item (PENDING). */
   @Post('theses/:id/feedback')
   @Roles(...JURORS)

@@ -37,6 +37,10 @@ export class Notification {
 
   @Prop()
   readAt?: Date;
+
+  /** Demo data written by the seed command. */
+  @Prop()
+  seedTag?: string;
 }
 
 export type NotificationDocument = HydratedDocument<Notification>;
@@ -46,3 +50,4 @@ export const NotificationSchema = applyJsonTransform(
 );
 NotificationSchema.index({ userId: 1, readAt: 1 });
 NotificationSchema.index({ userId: 1, createdAt: -1 });
+NotificationSchema.index({ seedTag: 1 }, { sparse: true });

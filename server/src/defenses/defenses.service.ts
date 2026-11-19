@@ -12,6 +12,7 @@ import {
 import { FilterQuery, Model, Types } from 'mongoose';
 import { Assignment } from '../assignments/schemas/assignment.schema';
 import { AppException } from '../common/errors/app.exception';
+import { Evaluation } from '../evaluations/schemas/evaluation.schema';
 import { paginate } from '../common/pagination/paginate';
 import { Paginated } from '../common/pagination/pagination.dto';
 import { Actor, actorFrom } from '../common/types/actor';
@@ -100,6 +101,8 @@ export class DefensesService {
     @InjectModel(Defense.name) private readonly model: Model<Defense>,
     @InjectModel(Assignment.name)
     private readonly assignments: Model<Assignment>,
+    @InjectModel(Evaluation.name)
+    private readonly evaluations: Model<Evaluation>,
     private readonly theses: ThesesService,
     private readonly users: UsersService,
     private readonly workflow: WorkflowService,
@@ -107,7 +110,7 @@ export class DefensesService {
   ) {}
 
   activeJurors(thesisId: Types.ObjectId | string): Promise<ActiveJuror[]> {
-    return findActiveJurors(this.assignments, thesisId);
+    return findActiveJurors(this.assignments, this.evaluations, thesisId);
   }
 
   /** The current non-cancelled defense of a thesis (PROPOSED, CONFIRMED or HELD). */

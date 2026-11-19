@@ -279,6 +279,41 @@ export class FeedbackService {
     return view;
   }
 
+  /**
+   * Manual REVISIONS_IN_PROGRESS → READY_FOR_DEFENSE by the coordinator, for theses that
+   * reached revisions with nothing (left) to resolve, e.g. APPROVED_WITH_CHANGES without items.
+   */
+  async markReadyForDefense(
+    thesisId: string,
+    user: AuthUser,
+  ): Promise<ThesisDocument> {
+    const thesis = await this.theses.findById(thesisId);
+    if (thesis.status !== ThesisStatus.REVISIONS_IN_PROGRESS) {
+      throw new AppException(
+        ErrorCode.WORKFLOW_INVALID_TRANSITION,
+        HttpStatus.CONFLICT,
+        `Cannot move thesis from ${thesis.status} to ${ThesisStatus.READY_FOR_DEFENSE}`,
+        { from: thesis.status, to: ThesisStatus.READY_FOR_DEFENSE },
+      );
+    }
+    const unresolved = await this.countUnresolved(thesis._id);
+    if (unresolved > 0) {
+      throw new AppException(
+        ErrorCode.FEEDBACK_INVALID_TRANSITION,
+        HttpStatus.CONFLICT,
+        'There are feedback items still unresolved',
+        { unresolved },
+      );
+    }
+    return this.workflow.transition({
+      thesisId: thesis.id as string,
+      expectedFrom: [ThesisStatus.REVISIONS_IN_PROGRESS],
+      to: ThesisStatus.READY_FOR_DEFENSE,
+      actor: actorFrom(user, Role.COORDINATOR),
+      reason: 'Coordinator: no feedback left to resolve',
+    });
+  }
+
   /** REVISIONS_IN_PROGRESS → READY_FOR_DEFENSE once nothing is left to resolve. */
   private async readyIfAllResolved(
     thesisId: Types.ObjectId,
