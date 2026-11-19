@@ -49,7 +49,8 @@ export const authApi = {
   login: (email: string, password: string) =>
     request<{ user: User }>('/auth/login', { method: 'POST', body: { email, password } }),
   logout: () => request<void>('/auth/logout', { method: 'POST' }),
-  me: () => request<{ user: User }>('/auth/me'),
+  /** Silent: a cold-start 401 must not trigger the session-lost redirect (the route middleware decides). */
+  me: () => request<{ user: User }>('/auth/me', { silent: true }),
   changePassword: (currentPassword: string, newPassword: string) =>
     request<void>('/auth/password', { method: 'PATCH', body: { currentPassword, newPassword } }),
   validateExternalToken: (token: string) =>
@@ -107,7 +108,7 @@ export const assignmentsApi = {
   tiebreaker: (thesisId: string, juror: JurorInput, responseBusinessDays?: number) =>
     request<{ assignment: Assignment; externalLink?: ExternalLink }>(`/theses/${thesisId}/assignments/tiebreaker`, {
       method: 'POST',
-      body: { juror, responseBusinessDays },
+      body: { ...juror, responseBusinessDays },
     }),
   forThesis: (thesisId: string) => request<Assignment[]>(`/theses/${thesisId}/assignments`),
   mine: (status?: string) => request<Assignment[]>('/assignments/mine', { query: { status } }),

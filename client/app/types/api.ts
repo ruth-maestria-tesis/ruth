@@ -49,8 +49,6 @@ export interface User {
   isActive: boolean;
   jurorProfile?: JurorProfile;
   studentProfile?: { studentCode: string; programId?: string; cohortId?: string };
-  /** RF-J14 external session scope. */
-  scope?: { assignmentIds: string[] };
 }
 
 export interface Program {

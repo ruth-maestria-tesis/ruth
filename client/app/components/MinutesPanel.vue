@@ -34,7 +34,7 @@ const mocked = isMocked('minutes');
 const mySigner = computed(() => {
   const list = minutes.value?.requiredSigners ?? [];
   const own = list.find((s) => s.userId === actor.value.id);
-  if (own || !mocked) return own;
+  if (own || !(import.meta.dev && mocked)) return own;
   return list.find((s) => s.role !== Role.COORDINATOR && !signedBy(s.userId)) ?? list.find((s) => s.role === Role.COORDINATOR);
 });
 const canSign = computed(() => {
@@ -59,6 +59,8 @@ async function load() {
   }
 }
 onMounted(load);
+// Reload when the thesis changes or its status moves (parents reload the thesis after `changed`).
+watch(() => [props.thesis.id, props.thesis.status], load);
 
 async function create() {
   saving.value = true;

@@ -82,7 +82,7 @@ export const VIOLATION_LABELS: Record<JuryViolation, string> = {
 };
 
 export const ERROR_MESSAGES: Partial<Record<ErrorCode, string>> = {
-  [ErrorCode.VALIDATION_FAILED]: 'Hay datos inválidos en el formulario.',
+  [ErrorCode.VALIDATION_FAILED]: 'Revise los datos del formulario.',
   [ErrorCode.NOT_FOUND]: 'El recurso no existe o no tiene permiso para verlo.',
   [ErrorCode.CONFLICT]: 'La operación entra en conflicto con el estado actual.',
   [ErrorCode.DUPLICATE_KEY]: 'Ya existe un registro con esos datos.',
@@ -158,6 +158,8 @@ const EXTRA_ERROR_MESSAGES: Record<string, string> = {
 };
 
 export function errorText(code: string | undefined, fallback?: string): string {
+  // Never surface the server's English validation message.
+  if (code === ErrorCode.VALIDATION_FAILED || code === 'VALIDATION_ERROR') return 'Revise los datos del formulario.';
   if (code && code in ERROR_MESSAGES) return ERROR_MESSAGES[code as ErrorCode]!;
   if (code && code in EXTRA_ERROR_MESSAGES) return EXTRA_ERROR_MESSAGES[code]!;
   return fallback ?? 'Ocurrió un error inesperado.';

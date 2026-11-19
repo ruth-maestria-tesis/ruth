@@ -14,6 +14,7 @@ import { useUiStore } from '~/stores/ui';
 const props = withDefaults(defineProps<{ thesisId: string; mode: 'juror' | 'student' | 'coordinator'; canCreate?: boolean }>(), {
   canCreate: false,
 });
+const emit = defineEmits<{ changed: [] }>();
 const ui = useUiStore();
 const actor = useActor();
 
@@ -46,6 +47,7 @@ async function load() {
   }
 }
 onMounted(load);
+watch(() => props.thesisId, load);
 
 async function create() {
   creating.value = true;
@@ -86,6 +88,7 @@ async function send() {
     reply.value = null;
     ui.notify('Observación actualizada.');
     await load();
+    emit('changed');
   } catch (e) {
     ui.error(e);
   } finally {
@@ -107,6 +110,10 @@ const jurorName = (i: FeedbackItem) => (i.juror ? fullName(i.juror) : 'Jurado');
       <v-chip color="info" variant="tonal">{{ summary.addressed }} atendidas</v-chip>
       <v-chip color="success" variant="tonal">{{ summary.resolved }} subsanadas</v-chip>
     </div>
+
+    <v-alert v-if="mode === 'juror'" type="info" variant="tonal" density="compact" class="mb-3">
+      Al aprobar la subsanación de la última observación pendiente se cierra la etapa de revisiones y el coordinador puede habilitar la sustentación.
+    </v-alert>
 
     <v-tabs v-model="chapter" color="primary" show-arrows class="mb-3">
       <v-tab value="ALL">Todas ({{ items.length }})</v-tab>

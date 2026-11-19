@@ -122,13 +122,13 @@ const isExternalJuror = (a: Assignment) => a.juror?.roles.includes(Role.EXTERNAL
     <v-alert v-else-if="error" type="error" variant="tonal">No se encontró la tesis o no tiene permiso para verla.</v-alert>
     <template v-if="thesis && summary">
       <ThesisHeader :thesis="summary" />
-      <v-alert v-if="canManage && inRevisions && unresolved !== null" :type="unresolved === 0 ? 'success' : 'info'" variant="tonal" class="mb-4">
+      <v-alert v-if="canManage && inRevisions && unresolved !== null" :type="unresolved === 0 ? 'success' : 'info'" :variant="unresolved === 0 ? 'flat' : 'tonal'" :border="unresolved === 0 ? 'start' : false" class="mb-4">
         <div class="d-flex flex-wrap align-center ga-3">
           <div class="flex-grow-1">
-            <template v-if="unresolved === 0">Todas las observaciones están subsanadas. Puede habilitar la tesis para sustentación.</template>
+            <template v-if="unresolved === 0">No hay observaciones abiertas. Puede habilitar la tesis para sustentación.</template>
             <template v-else>Quedan {{ unresolved }} observaciones sin subsanar (RN-06).</template>
           </div>
-          <v-btn v-if="unresolved === 0" color="primary" variant="flat" prepend-icon="mdi-check-decagram" :loading="markingReady" @click="markReady">
+          <v-btn v-if="unresolved === 0" color="white" variant="flat" size="large" prepend-icon="mdi-check-decagram" :loading="markingReady" @click="markReady">
             Marcar lista para sustentación
           </v-btn>
           <v-btn v-else variant="text" :to="`/coordinator/theses/${thesis.id}/feedback`">Ver observaciones</v-btn>
