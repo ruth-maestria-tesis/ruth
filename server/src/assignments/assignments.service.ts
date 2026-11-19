@@ -10,7 +10,7 @@ import {
   isExternalOnly,
   ThesisStatus,
 } from '@thesis/shared';
-import { isObjectIdOrHexString, Model, Types } from 'mongoose';
+import { FilterQuery, isObjectIdOrHexString, Model, Types } from 'mongoose';
 import { AppException } from '../common/errors/app.exception';
 import { addBusinessDays } from '../common/time/business-days';
 import type { Actor } from '../common/types/actor';
@@ -37,6 +37,7 @@ import {
   ValidateAssignmentsDto,
 } from './dto/create-assignments.dto';
 import { JurorInputDto } from './dto/juror-input.dto';
+import { QueryMyAssignmentsDto } from './dto/respond.dto';
 import { externalAccessUrl, newExternalToken } from './external-token';
 import {
   CandidateUser,
@@ -99,7 +100,7 @@ const assignmentConflict = () =>
     'The jury changed concurrently',
   );
 
-const thesisStatusError = (status: ThesisStatus) =>
+export const thesisStatusError = (status: ThesisStatus) =>
   new AppException(
     ErrorCode.ASSIGNMENT_THESIS_STATUS,
     HttpStatus.CONFLICT,
@@ -236,6 +237,32 @@ export class AssignmentsService {
       .sort({ slot: 1, assignedAt: 1 })
       .exec();
     return this.views(docs, { withJuror: true });
+  }
+
+  // ---------------------------------------------------------------- CU-08 lists
+
+  /** The juror's own assignments (a scoped session only sees its scope), newest first. */
+  async findMine(
+    user: AuthUser,
+    query: QueryMyAssignmentsDto,
+  ): Promise<AssignmentView[]> {
+    const filter: FilterQuery<Assignment> = { jurorId: user.id };
+    if (query.status) filter.status = query.status;
+    if (user.scope) filter._id = { $in: user.scope.assignmentIds };
+    const docs = await this.model
+      .find(filter)
+      .sort({ assignedAt: -1, _id: -1 })
+      .exec();
+    return this.views(docs, { withThesis: true });
+  }
+
+  async findOneView(id: string, user: AuthUser): Promise<AssignmentView> {
+    const doc = await this.findViewable(id, user);
+    const [view] = await this.views([doc], {
+      withThesis: true,
+      withJuror: true,
+    });
+    return view;
   }
 
   // ---------------------------------------------------------------- shared helpers

@@ -4,6 +4,7 @@ import { SettingsModule } from '../settings/settings.module';
 import { ThesesModule } from '../theses/theses.module';
 import { UsersModule } from '../users/users.module';
 import { WorkflowModule } from '../workflow/workflow.module';
+import { AssignmentResponsesService } from './assignment-responses.service';
 import { AssignmentsController } from './assignments.controller';
 import { AssignmentsService } from './assignments.service';
 import { Assignment, AssignmentSchema } from './schemas/assignment.schema';
@@ -19,7 +20,7 @@ import { Assignment, AssignmentSchema } from './schemas/assignment.schema';
     SettingsModule,
   ],
   controllers: [AssignmentsController],
-  providers: [AssignmentsService],
-  exports: [AssignmentsService],
+  providers: [AssignmentsService, AssignmentResponsesService],
+  exports: [AssignmentsService, AssignmentResponsesService],
 })
 export class AssignmentsModule {}

@@ -1,4 +1,12 @@
-import { Body, Controller, Get, HttpCode, Param, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Param,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Role } from '@thesis/shared';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -6,16 +14,21 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { ParseObjectIdPipe } from '../common/pipes/parse-object-id.pipe';
 import { actorFrom } from '../common/types/actor';
 import type { AuthUser } from '../common/types/auth-user';
+import { AssignmentResponsesService } from './assignment-responses.service';
 import { AssignmentsService } from './assignments.service';
 import {
   CreateAssignmentsDto,
   ValidateAssignmentsDto,
 } from './dto/create-assignments.dto';
+import { DeclineAssignmentDto, QueryMyAssignmentsDto } from './dto/respond.dto';
 
 @ApiTags('assignments')
 @Controller()
 export class AssignmentsController {
-  constructor(private readonly assignments: AssignmentsService) {}
+  constructor(
+    private readonly assignments: AssignmentsService,
+    private readonly responses: AssignmentResponsesService,
+  ) {}
 
   /** CU-01: assign the two primary jurors. */
   @Post('theses/:id/assignments')
@@ -44,5 +57,44 @@ export class AssignmentsController {
   @Roles(Role.COORDINATOR)
   validate(@Body() dto: ValidateAssignmentsDto) {
     return this.assignments.validate(dto);
+  }
+
+  /** CU-08: the juror's assignments with countdown. Declared before `assignments/:id`. */
+  @Get('assignments/mine')
+  @Roles(Role.INTERNAL_JUROR, Role.EXTERNAL_JUROR)
+  mine(@CurrentUser() user: AuthUser, @Query() query: QueryMyAssignmentsDto) {
+    return this.assignments.findMine(user, query);
+  }
+
+  @Get('assignments/:id')
+  @Roles(Role.ADMIN, Role.COORDINATOR, Role.INTERNAL_JUROR, Role.EXTERNAL_JUROR)
+  findOne(
+    @Param('id', ParseObjectIdPipe) id: string,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.assignments.findOneView(id, user);
+  }
+
+  /** CU-08 main flow. */
+  @Post('assignments/:id/accept')
+  @HttpCode(200)
+  @Roles(Role.INTERNAL_JUROR, Role.EXTERNAL_JUROR)
+  accept(
+    @Param('id', ParseObjectIdPipe) id: string,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.responses.accept(id, user);
+  }
+
+  /** CU-08 FA-01. */
+  @Post('assignments/:id/decline')
+  @HttpCode(200)
+  @Roles(Role.INTERNAL_JUROR, Role.EXTERNAL_JUROR)
+  decline(
+    @Param('id', ParseObjectIdPipe) id: string,
+    @Body() dto: DeclineAssignmentDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.responses.decline(id, user, dto.reason);
   }
 }
