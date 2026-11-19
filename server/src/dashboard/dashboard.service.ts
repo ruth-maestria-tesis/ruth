@@ -1,6 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
-import { AssignmentStatus, AssignmentType, ThesisStatus } from '@thesis/shared';
+import {
+  AssignmentStatus,
+  AssignmentType,
+  EvaluationStatus,
+  ThesisStatus,
+} from '@thesis/shared';
 import { Connection, FilterQuery, Model, Types } from 'mongoose';
 import { Assignment } from '../assignments/schemas/assignment.schema';
 import { Cohort } from '../catalogs/schemas/cohort.schema';
@@ -153,44 +158,48 @@ export class DashboardService {
 
     const holidays = await this.settings.holidaySet();
     const limit = addBusinessDays(now, RESPONSE_DUE_BUSINESS_DAYS, holidays);
-    const due = await this.assignments
-      .find({
-        status: AssignmentStatus.PENDING,
-        responseDeadline: { $lte: limit },
-      })
-      .sort({ responseDeadline: 1 })
-      .limit(MAX_ALERTS * 4)
-      .lean()
-      .exec();
+    // Resolve the filtered theses first so the assignment queries (and their limits) only
+    // consider theses in scope: due-soon uses the plain filter, overdue only theses still
+    // UNDER_EVALUATION.
+    const [scoped, evaluating] = await Promise.all([
+      this.theses.find(filter, 'code title').lean().exec(),
+      this.theses
+        .find({ ...filter, status: ThesisStatus.UNDER_EVALUATION }, '_id')
+        .lean()
+        .exec(),
+    ]);
+    const byId = new Map(scoped.map((t) => [String(t._id), t]));
 
-    const overdue = await this.assignments
-      .find({
-        status: AssignmentStatus.ACCEPTED,
-        type: AssignmentType.PRIMARY,
-        evaluationDeadline: { $lt: now },
-      })
-      .sort({ evaluationDeadline: 1 })
-      .limit(MAX_ALERTS * 4)
-      .lean()
-      .exec();
+    // An empty $in matches nothing, so empty filters need no special case.
+    const [due, overdue] = await Promise.all([
+      this.assignments
+        .find({
+          thesisId: { $in: scoped.map((t) => t._id) },
+          isActive: true,
+          status: AssignmentStatus.PENDING,
+          responseDeadline: { $gte: now, $lte: limit },
+        })
+        .sort({ responseDeadline: 1 })
+        .limit(MAX_ALERTS)
+        .lean()
+        .exec(),
+      this.assignments
+        .find({
+          thesisId: { $in: evaluating.map((t) => t._id) },
+          isActive: true,
+          status: AssignmentStatus.ACCEPTED,
+          type: AssignmentType.PRIMARY,
+          evaluationDeadline: { $lt: now },
+        })
+        .sort({ evaluationDeadline: 1 })
+        .limit(MAX_ALERTS * 4)
+        .lean()
+        .exec(),
+    ]);
     const submitted = overdue.length
-      ? await this.submittedPairs(overdue)
+      ? await this.submittedAssignmentIds(overdue.map((a) => a._id))
       : new Set<string>();
-    const overdueOpen = overdue.filter(
-      (a) =>
-        !submitted.has(
-          `${a.thesisId.toHexString()}:${a.jurorId.toHexString()}`,
-        ),
-    );
-
-    const thesisIds = [...due, ...overdueOpen].map((a) => a.thesisId);
-    const related = thesisIds.length
-      ? await this.theses
-          .find({ ...filter, _id: { $in: thesisIds } }, 'code title')
-          .lean()
-          .exec()
-      : [];
-    const byId = new Map(related.map((t) => [String(t._id), t]));
+    const overdueOpen = overdue.filter((a) => !submitted.has(String(a._id)));
 
     for (const a of due) {
       const t = byId.get(String(a.thesisId));
@@ -213,20 +222,20 @@ export class DashboardService {
     return alerts.slice(0, MAX_ALERTS);
   }
 
-  /** "thesisId:jurorId" pairs with a SUBMITTED evaluation (raw collection; may not exist yet). */
-  private async submittedPairs(
-    assignments: Pick<Assignment, 'thesisId' | 'jurorId'>[],
+  /** Ids of the given assignments that have a SUBMITTED evaluation (raw collection). */
+  private async submittedAssignmentIds(
+    assignmentIds: Types.ObjectId[],
   ): Promise<Set<string>> {
     const rows = await this.connection
       .collection('evaluations')
       .find(
         {
-          status: 'SUBMITTED',
-          thesisId: { $in: assignments.map((a) => a.thesisId) },
+          status: EvaluationStatus.SUBMITTED,
+          assignmentId: { $in: assignmentIds },
         },
-        { projection: { thesisId: 1, jurorId: 1 } },
+        { projection: { assignmentId: 1 } },
       )
       .toArray();
-    return new Set(rows.map((r) => `${r.thesisId}:${r.jurorId}`));
+    return new Set(rows.map((r) => String(r.assignmentId)));
   }
 }
