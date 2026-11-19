@@ -38,6 +38,7 @@ import {
   ValidateAssignmentsDto,
 } from './dto/create-assignments.dto';
 import { JurorInputDto } from './dto/juror-input.dto';
+import { ReplaceAssignmentDto } from './dto/replace-assignment.dto';
 import { QueryMyAssignmentsDto } from './dto/respond.dto';
 import { externalAccessUrl, newExternalToken } from './external-token';
 import {
@@ -48,6 +49,7 @@ import {
   validateJury,
 } from './jury.rules';
 import { Assignment, AssignmentDocument } from './schemas/assignment.schema';
+import { isWorkflowRace } from './workflow-race';
 
 export interface ExternalLink {
   assignmentId: string;
@@ -99,6 +101,13 @@ const assignmentConflict = () =>
     ErrorCode.ASSIGNMENT_CONFLICT,
     HttpStatus.CONFLICT,
     'The jury changed concurrently',
+  );
+
+const notReplaceable = (message: string) =>
+  new AppException(
+    ErrorCode.ASSIGNMENT_NOT_REPLACEABLE,
+    HttpStatus.CONFLICT,
+    message,
   );
 
 export const thesisStatusError = (status: ThesisStatus) =>
@@ -247,6 +256,264 @@ export class AssignmentsService {
       .sort({ slot: 1, assignedAt: 1 })
       .exec();
     return this.views(docs, { withJuror: true });
+  }
+
+  // ---------------------------------------------------------------- replacement
+
+  /**
+   * Replaces a PENDING, DECLINED or EXPIRED primary juror while the jury is being formed
+   * (spec §4 PENDING_JUROR_REPLACEMENT). RN-01 and the juror history apply to the newcomer;
+   * RF-C13 applies once the jury has two jurors.
+   */
+  async replace(
+    thesisId: string,
+    dto: ReplaceAssignmentDto,
+    actor: Actor,
+  ): Promise<{ assignment: AssignmentView; externalLink?: ExternalLink }> {
+    const thesis = await this.theses.findById(thesisId);
+    // Never on SUBMITTED: there, active assignments are taken as CU-01 orphans.
+    if (
+      thesis.status !== ThesisStatus.JURORS_ASSIGNED &&
+      thesis.status !== ThesisStatus.PENDING_JUROR_REPLACEMENT
+    ) {
+      throw thesisStatusError(thesis.status);
+    }
+    const old = isObjectIdOrHexString(dto.assignmentId)
+      ? await this.model
+          .findOne({
+            _id: dto.assignmentId,
+            thesisId: thesis._id,
+            type: AssignmentType.PRIMARY,
+          })
+          .exec()
+      : null;
+    if (!old) throw assignmentNotFound();
+    const replaceable =
+      old.status === AssignmentStatus.PENDING ||
+      ((old.status === AssignmentStatus.DECLINED ||
+        old.status === AssignmentStatus.EXPIRED) &&
+        !old.replacedById);
+    if (!replaceable)
+      throw notReplaceable(`A ${old.status} assignment cannot be replaced`);
+
+    const others = await this.activePrimaries(thesis._id, old._id);
+    const kept = new Map(
+      (
+        await this.users.findManyByIds(
+          others.map((o) => o.jurorId.toHexString()),
+        )
+      ).map((u) => [u.id as string, u]),
+    );
+    const [candidate] = await this.resolveCandidates(
+      [dto.juror],
+      () => old.slot,
+    );
+    const candidates: JurorCandidate[] = [
+      ...others.map((o): JurorCandidate => {
+        const id = o.jurorId.toHexString();
+        const u = kept.get(id);
+        return {
+          slot: o.slot,
+          key: id,
+          userId: id,
+          user: u ? candidateUser(u) : undefined,
+          keep: true,
+        };
+      }),
+      candidate,
+    ];
+    const { previousJurorIds } = await this.juryHistory(thesis._id);
+    this.assertValid(
+      validateJury({
+        candidates,
+        parties: partiesOf(thesis),
+        previousJurorIds,
+        required: candidates.length,
+        requireUnicordoba: candidates.length === 2,
+      }),
+    );
+
+    const settings = await this.settings.get();
+    const { doc, created } = await this.persistReplacement(
+      old,
+      dto,
+      settings,
+      actor,
+    );
+    await this.syncJuryStatus(thesis._id, old, doc, created, actor);
+
+    this.emit(
+      ASSIGNMENT_EVENTS.REPLACED,
+      old,
+      actor,
+      `Replaced by ${doc.id as string}`,
+    );
+    this.emit(ASSIGNMENT_EVENTS.CREATED, doc, actor);
+    const [link] = await this.linksForExternalJurors([doc]);
+    const [view] = await this.views([doc], { withJuror: true });
+    return { assignment: view, externalLink: link };
+  }
+
+  private activePrimaries(
+    thesisId: Types.ObjectId,
+    exceptId?: Types.ObjectId,
+  ): Promise<AssignmentDocument[]> {
+    const filter: FilterQuery<Assignment> = {
+      thesisId,
+      type: AssignmentType.PRIMARY,
+      isActive: true,
+    };
+    if (exceptId) filter._id = { $ne: exceptId };
+    return this.model.find(filter).exec();
+  }
+
+  /**
+   * Marks the old assignment first (conditional, so two replacements of one slot cannot both
+   * win and the loser creates nothing), then inserts the new one under the pre-generated id.
+   * The slot has to be freed before the insert: a PENDING old assignment still holds the
+   * (thesisId, slot) unique index. Until the insert lands the slot looks empty, which
+   * markNeedsReplacement and syncJuryStatus both tolerate.
+   */
+  private async persistReplacement(
+    old: AssignmentDocument,
+    dto: ReplaceAssignmentDto,
+    settings: { acceptanceBusinessDays: number; holidays: string[] },
+    actor: Actor,
+  ): Promise<{ doc: AssignmentDocument; created: Created }> {
+    const newId = new Types.ObjectId();
+    const marked =
+      old.status === AssignmentStatus.PENDING
+        ? await this.model
+            .updateOne(
+              { _id: old._id, status: AssignmentStatus.PENDING },
+              {
+                $set: {
+                  status: AssignmentStatus.REPLACED,
+                  isActive: false,
+                  replacedById: newId,
+                },
+              },
+            )
+            .exec()
+        : await this.model
+            .updateOne(
+              {
+                _id: old._id,
+                status: old.status,
+                replacedById: { $exists: false },
+              },
+              { $set: { replacedById: newId } },
+            )
+            .exec();
+    if (marked.modifiedCount === 0)
+      throw notReplaceable('The assignment changed concurrently');
+    try {
+      // persist() removes what it created (inline user included) when it fails.
+      const { docs, created } = await this.persist(
+        old.thesisId,
+        [{ slot: old.slot, input: dto.juror }],
+        dto.responseBusinessDays ?? settings.acceptanceBusinessDays,
+        new Set(settings.holidays),
+        actor,
+        newId,
+      );
+      return { doc: docs[0], created };
+    } catch (err) {
+      await this.restoreOld(old, newId);
+      throw err;
+    }
+  }
+
+  /**
+   * After the insert: re-checks RF-C13 on the jury as stored (a concurrent replacement of the
+   * other slot was validated without this juror), moves PENDING_JUROR_REPLACEMENT →
+   * JURORS_ASSIGNED once both slots are active, and moves it back if a slot emptied
+   * concurrently. Races on the thesis status are no-ops.
+   */
+  private async syncJuryStatus(
+    thesisId: Types.ObjectId,
+    old: AssignmentDocument,
+    doc: AssignmentDocument,
+    created: Created,
+    actor: Actor,
+  ): Promise<void> {
+    const active = await this.activePrimaries(thesisId);
+    if (active.length >= 2) {
+      const jurors = await this.users.findManyByIds(
+        active.map((a) => a.jurorId.toHexString()),
+      );
+      if (!jurors.some((u) => u.jurorProfile?.isUnicordoba)) {
+        await this.undoReplacement(old, doc._id, created);
+        throw assignmentConflict();
+      }
+      try {
+        await this.workflow.transition({
+          thesisId: thesisId.toHexString(),
+          expectedFrom: [ThesisStatus.PENDING_JUROR_REPLACEMENT],
+          to: ThesisStatus.JURORS_ASSIGNED,
+          actor,
+          reason: 'Juror replaced',
+        });
+      } catch (e) {
+        if (!isWorkflowRace(e)) {
+          await this.undoReplacement(old, doc._id, created);
+          throw e;
+        }
+      }
+    }
+    // A decline/expiry that ran while the slot was being filled may have found the thesis
+    // already waiting and left it; with the thesis now JURORS_ASSIGNED it would be hidden.
+    try {
+      if ((await this.activePrimaries(thesisId)).length >= 2) return;
+      await this.workflow.transition({
+        thesisId: thesisId.toHexString(),
+        expectedFrom: [ThesisStatus.JURORS_ASSIGNED],
+        to: ThesisStatus.PENDING_JUROR_REPLACEMENT,
+        actor,
+        reason: 'A juror slot emptied during the replacement',
+      });
+    } catch (e) {
+      if (isWorkflowRace(e)) return;
+      // The replacement itself is stored; the next decline/expiry re-evaluates the thesis.
+      this.logger.error(
+        `Thesis ${thesisId.toHexString()} may show JURORS_ASSIGNED with an empty juror slot`,
+        e instanceof Error ? e.stack : String(e),
+      );
+    }
+  }
+
+  private async undoReplacement(
+    old: AssignmentDocument,
+    newId: Types.ObjectId,
+    created: Created,
+  ): Promise<void> {
+    await this.compensate(created);
+    await this.restoreOld(old, newId);
+  }
+
+  /** Reverts the mark, but only if it is still this call's (replacedById = newId). Never throws. */
+  private async restoreOld(
+    old: AssignmentDocument,
+    newId: Types.ObjectId,
+  ): Promise<void> {
+    try {
+      await this.model
+        .updateOne(
+          { _id: old._id, replacedById: newId },
+          old.status === AssignmentStatus.PENDING
+            ? {
+                $set: { status: AssignmentStatus.PENDING, isActive: true },
+                $unset: { replacedById: 1 },
+              }
+            : { $unset: { replacedById: 1 } },
+        )
+        .exec();
+    } catch (err) {
+      this.logger.error(
+        `Could not restore assignment ${old.id as string} after a failed replacement (${newId.toHexString()})`,
+        err instanceof Error ? err.stack : String(err),
+      );
+    }
   }
 
   // ---------------------------------------------------------------- CU-08 lists

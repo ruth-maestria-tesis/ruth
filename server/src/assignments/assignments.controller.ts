@@ -20,6 +20,7 @@ import {
   CreateAssignmentsDto,
   ValidateAssignmentsDto,
 } from './dto/create-assignments.dto';
+import { ReplaceAssignmentDto } from './dto/replace-assignment.dto';
 import { DeclineAssignmentDto, QueryMyAssignmentsDto } from './dto/respond.dto';
 
 @ApiTags('assignments')
@@ -43,6 +44,17 @@ export class AssignmentsController {
       dto,
       actorFrom(user, Role.COORDINATOR),
     );
+  }
+
+  /** Replaces a pending, declined or expired primary juror. */
+  @Post('theses/:id/assignments/replace')
+  @Roles(Role.COORDINATOR)
+  replace(
+    @Param('id', ParseObjectIdPipe) id: string,
+    @Body() dto: ReplaceAssignmentDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.assignments.replace(id, dto, actorFrom(user, Role.COORDINATOR));
   }
 
   @Get('theses/:id/assignments')
