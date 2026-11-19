@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Role, ThesisStatus } from '@thesis/shared';
-import type { Assignment, DashboardData, Thesis } from '~/types/api';
-import { assignmentsApi, dashboardApi, thesesApi } from '~/utils/api';
+import type { Assignment, DashboardData, ReportSummary, Thesis } from '~/types/api';
+import { assignmentsApi, dashboardApi, reportsApi, thesesApi } from '~/utils/api';
 import { fullName } from '~/utils/i18n';
 import { useUiStore } from '~/stores/ui';
 
@@ -11,6 +11,7 @@ const ui = useUiStore();
 const { programs, periods, cohorts } = useCatalogs();
 const filters = reactive({ programId: undefined as string | undefined, periodId: undefined as string | undefined, cohortId: undefined as string | undefined });
 const data = ref<DashboardData | null>(null);
+const summary = ref<ReportSummary | null>(null);
 const loading = ref(true);
 const nearDeadline = ref<{ thesis: Thesis; assignment: Assignment }[]>([]);
 
@@ -20,12 +21,18 @@ const ALERT_TYPE: Record<string, 'error' | 'warning' | 'info'> = {
   PENDING_REPLACEMENT: 'warning',
   RESPONSE_DUE_SOON: 'warning',
 };
+const barWidth = (n: number, list: { count: number }[]) => `${Math.round((n / Math.max(1, ...list.map((r) => r.count))) * 100)}%`;
 const count = (...s: ThesisStatus[]) => s.reduce((n, k) => n + (data.value?.byStatus[k] ?? 0), 0);
 
 async function load() {
   loading.value = true;
   try {
-    data.value = await dashboardApi.coordinator({ ...filters });
+    const [dash, sum] = await Promise.all([dashboardApi.coordinator({ ...filters }), reportsApi.summary({ ...filters }).catch((e) => {
+        ui.error(e);
+        return null;
+      })]);
+    data.value = dash;
+    summary.value = sum;
     await loadNearDeadline();
   } catch (e) {
     ui.error(e);
@@ -49,6 +56,12 @@ async function loadNearDeadline() {
   );
   nearDeadline.value = rows.sort((a, b) => (a.assignment.responseDaysRemaining ?? 0) - (b.assignment.responseDaysRemaining ?? 0));
 }
+
+const summaryBlocks = computed(() => [
+  { title: 'Por estado', rows: (summary.value?.byStatus ?? []).map((r) => ({ key: r.status, label: r.label, count: r.count })) },
+  { title: 'Por programa', rows: (summary.value?.byProgram ?? []).map((r) => ({ key: r.id, label: r.name ?? r.code ?? '—', count: r.count })) },
+  { title: 'Por periodo', rows: (summary.value?.byPeriod ?? []).map((r) => ({ key: r.id, label: r.code ?? '—', count: r.count })) },
+]);
 
 watch(filters, load);
 onMounted(load);
@@ -151,5 +164,30 @@ onMounted(load);
         </v-card>
       </v-col>
     </v-row>
+
+    <v-card class="pa-4 mt-4">
+      <div class="d-flex align-center mb-3">
+        <v-icon icon="mdi-chart-bar" color="primary" class="mr-2" />
+        <div>
+          <div class="text-h2-section">Resumen</div>
+          <div class="text-body-2 text-medium-emphasis">{{ summary?.total ?? 0 }} tesis según los filtros aplicados</div>
+        </div>
+      </div>
+      <v-row>
+        <v-col v-for="block in summaryBlocks" :key="block.title" cols="12" md="4">
+          <div class="text-meta mb-2">{{ block.title }}</div>
+          <div v-for="row in block.rows" :key="row.key" class="mb-2">
+            <div class="d-flex text-body-2"><span>{{ row.label }}</span><v-spacer /><strong>{{ row.count }}</strong></div>
+            <div class="summary-bar"><div class="summary-bar__fill" :style="{ width: barWidth(row.count, block.rows) }" /></div>
+          </div>
+          <div v-if="!block.rows.length" class="text-body-2 text-medium-emphasis">Sin datos.</div>
+        </v-col>
+      </v-row>
+    </v-card>
   </div>
 </template>
+
+<style scoped>
+.summary-bar { height: 6px; border-radius: 3px; background: rgba(var(--v-theme-on-surface), 0.08); }
+.summary-bar__fill { height: 100%; border-radius: 3px; background: rgb(var(--v-theme-primary)); }
+</style>

@@ -69,7 +69,7 @@ async function confirm() {
     ui.notify('Asistencia confirmada.');
     emit('changed', defense.value);
   } catch (e) {
-    ui.error(e);
+    ui.error(e, true);
   } finally {
     saving.value = false;
   }

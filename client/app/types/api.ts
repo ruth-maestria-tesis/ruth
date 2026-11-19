@@ -129,6 +129,49 @@ export interface ThesisQuery {
   q?: string;
 }
 
+/** Filters shared by the list, the reports and the summary (no pagination). */
+export type ThesisReportFilters = Omit<ThesisQuery, 'page' | 'limit'>;
+
+export interface ReportSummary {
+  total: number;
+  byStatus: { status: ThesisStatus; label: string; count: number }[];
+  byProgram: { id: string; code?: string; name?: string; count: number }[];
+  byPeriod: { id: string; code?: string; count: number }[];
+}
+
+export interface AuditLog {
+  id: string;
+  at: string;
+  actorId?: string;
+  actorRoles: Role[];
+  action: string;
+  method?: string;
+  path?: string;
+  entityType?: string;
+  entityId?: string;
+  statusCode?: number;
+  ip?: string;
+  userAgent?: string;
+  meta?: Record<string, string | number | boolean | string[]>;
+}
+
+export interface AuditQuery {
+  page?: number;
+  limit?: number;
+  actorId?: string;
+  entityType?: string;
+  entityId?: string;
+  action?: string;
+  from?: string;
+  to?: string;
+}
+
+export interface ReconcileResult {
+  thesisId: string;
+  status: ThesisStatus;
+  changed: boolean;
+}
+
 export interface CreateThesisInput {
   title: string;
   abstract?: string;

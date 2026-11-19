@@ -85,6 +85,7 @@ async function update() {
     saving.value = false;
   }
 }
+/** Signing is idempotent server-side: after a failure the button stays (state comes only from the server) and a repeat call returns 200. */
 async function sign() {
   saving.value = true;
   try {
@@ -93,7 +94,7 @@ async function sign() {
     ui.notify(sealed.value ? 'Acta firmada y sellada.' : 'Firma registrada.');
     emit('changed', minutes.value!);
   } catch (e) {
-    ui.error(e);
+    ui.error(e, true);
   } finally {
     saving.value = false;
   }

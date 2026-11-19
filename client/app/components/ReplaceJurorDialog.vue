@@ -18,6 +18,7 @@ const props = withDefaults(defineProps<{ thesisId: string; assignment?: Assignme
 const emit = defineEmits<{ done: [link?: ExternalLink] }>();
 const ui = useUiStore();
 
+const isTiebreakerSlot = computed(() => props.assignment?.type === 'TIEBREAKER');
 const juror = ref<JurorInput | null>(null);
 const days = ref(8);
 const saving = ref(false);
@@ -43,7 +44,7 @@ async function submit() {
       props.mode === 'tiebreaker'
         ? await assignmentsApi.tiebreaker(props.thesisId, juror.value, days.value)
         : await assignmentsApi.replace(props.thesisId, props.assignment!.id, juror.value, days.value);
-    ui.notify(props.mode === 'tiebreaker' ? 'Jurado dirimente designado.' : 'Jurado reemplazado.');
+    ui.notify(props.mode === 'tiebreaker' ? 'Jurado dirimente designado.' : isTiebreakerSlot.value ? 'Jurado dirimente reemplazado.' : 'Jurado reemplazado.');
     emit('done', r.externalLink);
     open.value = false;
   } catch (e) {
@@ -59,13 +60,13 @@ async function submit() {
 
 <template>
   <v-dialog v-model="open" max-width="620">
-    <v-card :title="mode === 'tiebreaker' ? 'Designar jurado dirimente (CU-05)' : 'Reemplazar jurado'">
+    <v-card :title="mode === 'tiebreaker' ? 'Designar jurado dirimente (CU-05)' : isTiebreakerSlot ? 'Reemplazar jurado dirimente' : 'Reemplazar jurado'">
       <v-card-text>
         <div v-if="assignment && mode === 'replace'" class="text-body-2 mb-4">
-          Reemplaza a <strong>{{ fullName(assignment.juror) }}</strong> (Jurado {{ assignment.slot }}).
+          Reemplaza a <strong>{{ fullName(assignment.juror) }}</strong> ({{ isTiebreakerSlot ? 'Jurado dirimente' : `Jurado ${assignment.slot}` }}).
           <span v-if="assignment.declineReason"> Motivo de la declinación: “{{ assignment.declineReason }}”.</span>
         </div>
-        <JurorSelector :key="key" v-model="juror" :label="mode === 'tiebreaker' ? 'Tercer evaluador' : 'Nuevo jurado'" :exclude-ids="excludeIds" />
+        <JurorSelector :key="key" v-model="juror" :label="mode === 'tiebreaker' || isTiebreakerSlot ? 'Tercer evaluador' : 'Nuevo jurado'" :exclude-ids="excludeIds" />
         <v-text-field v-model.number="days" type="number" min="1" max="60" label="Plazo de respuesta (días hábiles)" class="mt-2" />
         <v-alert v-if="error" type="error" variant="tonal" density="compact">
           {{ error }}

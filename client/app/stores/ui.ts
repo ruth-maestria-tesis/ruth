@@ -9,8 +9,13 @@ export const useUiStore = defineStore('ui', {
     notify(text: string, color = 'success') {
       this.snackbar = { show: true, text, color };
     },
-    error(e: unknown) {
-      const text = e instanceof ApiError ? e.userMessage : 'Ocurrió un error inesperado.';
+    /**
+     * `retryable`: the call is idempotent server-side (minutes sign, defense confirm), so after a
+     * 5xx or network failure the user is told to press the button again; the UI never hides it.
+     */
+    error(e: unknown, retryable = false) {
+      let text = e instanceof ApiError ? e.userMessage : 'Ocurrió un error inesperado.';
+      if (retryable && e instanceof ApiError && (e.status >= 500 || e.status === 0)) text += ' Puede intentarlo de nuevo.';
       this.snackbar = { show: true, text, color: 'error' };
     },
   },
