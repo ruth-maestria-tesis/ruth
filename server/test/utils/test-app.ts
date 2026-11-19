@@ -9,6 +9,7 @@ import {
   PeriodTerm,
   ProgramLevel,
   Role,
+  ThesisStatus,
 } from '@thesis/shared';
 import { Types, type Connection } from 'mongoose';
 import { randomUUID } from 'node:crypto';
@@ -24,6 +25,7 @@ import { CreateUserDto } from '../../src/users/dto/create-user.dto';
 import { NewExternalJurorDto } from '../../src/users/dto/external-juror.dto';
 import { UserDocument } from '../../src/users/schemas/user.schema';
 import { UsersService } from '../../src/users/users.service';
+import { WorkflowService } from '../../src/workflow/workflow.service';
 
 export async function createTestApp(): Promise<INestApplication> {
   const moduleRef = await Test.createTestingModule({
@@ -221,6 +223,65 @@ export function assignJury(
       { jurors: jurorIds.map((jurorId) => ({ jurorId })) },
       { id: FIXTURE_COORDINATOR.id, role: Role.COORDINATOR },
     );
+}
+
+/**
+ * Until the evaluations module lands: UNDER_EVALUATION → READY_FOR_DEFENSE straight
+ * through WorkflowService (the only code path that changes thesis status).
+ */
+export function bringToReadyForDefense(
+  app: INestApplication,
+  thesisId: string,
+): Promise<ThesisDocument> {
+  return app.get(WorkflowService).transition({
+    thesisId,
+    to: ThesisStatus.READY_FOR_DEFENSE,
+    expectedFrom: [ThesisStatus.UNDER_EVALUATION],
+    actor: { id: FIXTURE_COORDINATOR.id, role: Role.COORDINATOR },
+    reason: 'test fixture',
+  });
+}
+
+export interface DefenseFixture {
+  thesis: ThesisDocument;
+  student: UserDocument;
+  jurors: UserDocument[];
+  jurorAgents: TestAgent[];
+  studentAgent: TestAgent;
+}
+
+/** Thesis whose two jurors accepted through the API, then moved to READY_FOR_DEFENSE. */
+export async function createReadyForDefenseThesis(
+  app: INestApplication,
+): Promise<DefenseFixture> {
+  const student = await createUser(app, { roles: [Role.STUDENT] });
+  const jurors = [
+    await createUser(app, { roles: [Role.INTERNAL_JUROR] }),
+    await createUser(app, { roles: [Role.INTERNAL_JUROR] }),
+  ];
+  const thesis = await createAssignableThesis(app, undefined, {
+    studentId: student.id as string,
+  });
+  const { assignments } = await assignJury(
+    app,
+    thesis.id as string,
+    jurors.map((j) => j.id as string),
+  );
+  const jurorAgents: TestAgent[] = [];
+  for (const [i, juror] of jurors.entries()) {
+    const agent = await loginAgent(app, juror.email);
+    await agent
+      .post(`/api/assignments/${assignments[i].id}/accept`)
+      .expect(200);
+    jurorAgents.push(agent);
+  }
+  return {
+    thesis: await bringToReadyForDefense(app, thesis.id as string),
+    student,
+    jurors,
+    jurorAgents,
+    studentAgent: await loginAgent(app, student.email),
+  };
 }
 
 /** supertest parser that collects binary responses into a Buffer. */
