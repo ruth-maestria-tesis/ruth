@@ -76,11 +76,13 @@ describe('External juror access — RF-J14 (e2e)', () => {
       externalAssignmentId,
     ]);
 
-    // Before accepting: thesis metadata yes, manuscript no.
+    // Before accepting: thesis metadata yes, manuscript no (not even listed).
     const detail = await agent
       .get(`/api/theses/${thesis.id as string}`)
       .expect(200);
-    const fileId = detail.body.manuscripts[0].fileId as string;
+    expect(detail.body.manuscripts).toEqual([]);
+    expect(detail.body.currentManuscriptId).toBeUndefined();
+    const fileId = thesis.manuscripts[0].fileId.toHexString();
     await agent
       .get(`/api/theses/${thesis.id as string}/manuscripts/${fileId}`)
       .expect(404);
@@ -178,7 +180,8 @@ describe('External juror access — RF-J14 (e2e)', () => {
     const detail = await juror
       .get(`/api/theses/${thesis.id as string}`)
       .expect(200);
-    const fileId = detail.body.manuscripts[0].fileId as string;
+    expect(detail.body.manuscripts).toEqual([]);
+    const fileId = thesis.manuscripts[0].fileId.toHexString();
     await juror
       .get(`/api/theses/${thesis.id as string}/manuscripts/${fileId}`)
       .expect(404);
@@ -188,6 +191,10 @@ describe('External juror access — RF-J14 (e2e)', () => {
     await juror
       .get(`/api/theses/${thesis.id as string}/manuscripts/${fileId}`)
       .expect(200);
+    const accepted = await juror
+      .get(`/api/theses/${thesis.id as string}`)
+      .expect(200);
+    expect(accepted.body.manuscripts[0].fileId).toBe(fileId);
 
     const other = await setup();
     const otherJuror = await loginAgent(app, other.internal.email);

@@ -1,11 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
+import { EvaluationStatus } from '@thesis/shared';
 import { Connection, Model } from 'mongoose';
 import { Assignment } from '../assignments/schemas/assignment.schema';
 import type { AuthUser } from '../common/types/auth-user';
 import { Defense } from '../defenses/schemas/defense.schema';
 import { Minutes } from '../minutes/schemas/minutes.schema';
 import { ThesesService } from '../theses/theses.service';
+import { isStaff } from '../theses/thesis-view';
 
 export type GraphNodeKind =
   'STATUS' | 'ASSIGNMENT' | 'EVALUATION' | 'DEFENSE' | 'MINUTES';
@@ -61,6 +63,7 @@ const MINUTES_LABELS: Record<string, string> = {
 
 interface EvaluationRow {
   _id: unknown;
+  jurorId?: { toString(): string };
   status?: string;
   verdict?: string;
   submittedAt?: Date;
@@ -157,16 +160,21 @@ export class TraceabilityService {
         a.assignedAt,
       );
     }
+    const staff = isStaff(user);
     for (const e of evaluations) {
+      const submitted = e.status === EvaluationStatus.SUBMITTED;
+      // Drafts are private: only staff and the draft's own author see them.
+      if (!submitted && !staff && e.jurorId?.toString() !== user.id) continue;
       const at = e.submittedAt ?? e.createdAt;
       if (!at) continue;
       const state = EVALUATION_LABELS[e.status ?? ''] ?? e.status ?? '';
+      // A draft label never carries the verdict.
+      const verdict = submitted && e.verdict ? ` (${e.verdict})` : '';
       attach(
         {
           id: `evaluation-${String(e._id)}`,
           kind: 'EVALUATION',
-          label:
-            `Evaluación ${state}${e.verdict ? ` (${e.verdict})` : ''}`.trim(),
+          label: `Evaluación ${state}${verdict}`.trim(),
           at: at.toISOString(),
           status: e.status,
         },

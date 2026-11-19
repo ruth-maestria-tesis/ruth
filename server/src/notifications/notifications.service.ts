@@ -1,10 +1,12 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { ErrorCode, Role } from '@thesis/shared';
-import { Model, Types } from 'mongoose';
+import { FilterQuery, Model, Types } from 'mongoose';
+import { Assignment } from '../assignments/schemas/assignment.schema';
 import { AppException } from '../common/errors/app.exception';
 import { paginate } from '../common/pagination/paginate';
 import type { Paginated } from '../common/pagination/pagination.dto';
+import type { AuthUser } from '../common/types/auth-user';
 import { User } from '../users/schemas/user.schema';
 import { QueryNotificationsDto } from './dto/query-notifications.dto';
 import {
@@ -18,6 +20,8 @@ export interface NotificationPayload {
   body: string;
   link?: string;
   entityRef?: { kind: string; id: string };
+  /** The thesis the notification is about; lets scoped sessions see only theirs. */
+  thesisId?: string;
 }
 
 @Injectable()
@@ -26,6 +30,8 @@ export class NotificationsService {
     @InjectModel(Notification.name)
     private readonly model: Model<Notification>,
     @InjectModel(User.name) private readonly users: Model<User>,
+    @InjectModel(Assignment.name)
+    private readonly assignments: Model<Assignment>,
   ) {}
 
   /** One notification per distinct, valid recipient. Returns how many were created. */
@@ -41,8 +47,13 @@ export class NotificationsService {
       ),
     ];
     if (!ids.length) return 0;
+    const { thesisId, ...rest } = payload;
+    const thesis =
+      thesisId && Types.ObjectId.isValid(thesisId)
+        ? { thesisId: new Types.ObjectId(thesisId) }
+        : {};
     await this.model.insertMany(
-      ids.map((id) => ({ ...payload, userId: new Types.ObjectId(id) })),
+      ids.map((id) => ({ ...rest, ...thesis, userId: new Types.ObjectId(id) })),
     );
     return ids.length;
   }
@@ -58,14 +69,47 @@ export class NotificationsService {
     );
   }
 
-  list(
-    userId: string,
+  /**
+   * The user's own notifications. A scoped (external-link) session only sees those about
+   * its assigned thesis: by `thesisId`, or by an `entityRef` to the thesis or assignment.
+   */
+  private async ownFilter(user: AuthUser): Promise<FilterQuery<Notification>> {
+    const own: FilterQuery<Notification> = {
+      userId: new Types.ObjectId(user.id),
+    };
+    if (!user.scope) return own;
+    const assignmentIds = user.scope.assignmentIds.filter((id) =>
+      Types.ObjectId.isValid(id),
+    );
+    const rows = await this.assignments
+      .find({ _id: { $in: assignmentIds }, jurorId: user.id }, 'thesisId')
+      .lean()
+      .exec();
+    const thesisIds = rows.map((r) => r.thesisId);
+    return {
+      ...own,
+      $or: [
+        { thesisId: { $in: thesisIds } },
+        {
+          'entityRef.kind': 'thesis',
+          'entityRef.id': { $in: thesisIds.map((t) => t.toHexString()) },
+        },
+        {
+          'entityRef.kind': 'assignment',
+          'entityRef.id': { $in: rows.map((r) => r._id.toHexString()) },
+        },
+      ],
+    };
+  }
+
+  async list(
+    user: AuthUser,
     query: QueryNotificationsDto,
   ): Promise<Paginated<NotificationDocument>> {
     return paginate(
       this.model,
       {
-        userId: new Types.ObjectId(userId),
+        ...(await this.ownFilter(user)),
         ...(query.unread ? { readAt: { $exists: false } } : {}),
       },
       { ...query, sort: 'createdAt' },
@@ -73,20 +117,20 @@ export class NotificationsService {
     );
   }
 
-  async unreadCount(userId: string): Promise<{ count: number }> {
+  async unreadCount(user: AuthUser): Promise<{ count: number }> {
     const count = await this.model
       .countDocuments({
-        userId: new Types.ObjectId(userId),
+        ...(await this.ownFilter(user)),
         readAt: { $exists: false },
       })
       .exec();
     return { count };
   }
 
-  async markRead(id: string, userId: string): Promise<NotificationDocument> {
+  async markRead(id: string, user: AuthUser): Promise<NotificationDocument> {
     const doc = await this.model
       .findOneAndUpdate(
-        { _id: id, userId: new Types.ObjectId(userId) },
+        { ...(await this.ownFilter(user)), _id: id },
         [{ $set: { readAt: { $ifNull: ['$readAt', '$$NOW'] } } }],
         { new: true },
       )
@@ -100,10 +144,10 @@ export class NotificationsService {
     return doc;
   }
 
-  async markAllRead(userId: string): Promise<{ updated: number }> {
+  async markAllRead(user: AuthUser): Promise<{ updated: number }> {
     const res = await this.model
       .updateMany(
-        { userId: new Types.ObjectId(userId), readAt: { $exists: false } },
+        { ...(await this.ownFilter(user)), readAt: { $exists: false } },
         { $set: { readAt: new Date() } },
       )
       .exec();

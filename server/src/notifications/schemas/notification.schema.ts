@@ -35,6 +35,10 @@ export class Notification {
   @Prop({ type: EntityRefSchema })
   entityRef?: EntityRef;
 
+  /** The thesis this is about (filters notifications of scoped external sessions). */
+  @Prop({ type: ObjectId, ref: 'Thesis' })
+  thesisId?: Types.ObjectId;
+
   @Prop()
   readAt?: Date;
 

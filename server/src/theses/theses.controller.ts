@@ -13,6 +13,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBody, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { Role } from '@thesis/shared';
+import { AllowScoped } from '../common/decorators/allow-scoped.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { ParseObjectIdPipe } from '../common/pipes/parse-object-id.pipe';
@@ -40,9 +41,10 @@ export class ThesesController {
   @Get('mine')
   @Roles(Role.STUDENT)
   mine(@CurrentUser() user: AuthUser) {
-    return this.theses.findMine(user.id);
+    return this.theses.findMineView(user);
   }
 
+  @AllowScoped()
   @Get(':id')
   @Roles(
     Role.ADMIN,
@@ -55,7 +57,7 @@ export class ThesesController {
     @Param('id', ParseObjectIdPipe) id: string,
     @CurrentUser() user: AuthUser,
   ) {
-    return this.theses.findReadable(id, user);
+    return this.theses.findReadableView(id, user);
   }
 
   @Post()
@@ -89,14 +91,16 @@ export class ThesesController {
       properties: { file: { type: 'string', format: 'binary' } },
     },
   })
-  uploadManuscript(
+  async uploadManuscript(
     @Param('id', ParseObjectIdPipe) id: string,
     @UploadedFile() file: Express.Multer.File | undefined,
     @CurrentUser() user: AuthUser,
   ) {
-    return this.theses.addManuscript(id, file, user);
+    const thesis = await this.theses.addManuscript(id, file, user);
+    return this.theses.viewAfterUpload(thesis, user);
   }
 
+  @AllowScoped()
   @Get(':id/manuscripts/:fileId')
   @Roles(
     Role.ADMIN,

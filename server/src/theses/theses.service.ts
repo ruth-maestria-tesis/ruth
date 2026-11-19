@@ -36,6 +36,7 @@ import {
   jurorAccessLevel,
 } from './thesis-access.policy';
 import { ThesisCodeService } from './thesis-code';
+import { isStaff, toThesisView } from './thesis-view';
 
 const SORT_FIELDS: SortFields = {
   code: 'code',
@@ -214,6 +215,40 @@ export class ThesesService {
     if (canReadThesis(user, thesis)) return thesis;
     if ((await this.jurorAccess(thesis._id, user)) !== 'NONE') return thesis;
     throw thesisNotFound();
+  }
+
+  /** GET /theses/:id: the readable thesis in the representation for this user's role. */
+  async findReadableView(
+    id: string,
+    user: AuthUser,
+  ): Promise<Record<string, unknown>> {
+    const thesis = await this.findById(id);
+    if (isStaff(user)) return toThesisView(thesis, { kind: 'STAFF' });
+    if (canReadThesis(user, thesis))
+      return toThesisView(thesis, { kind: 'STUDENT' });
+    const access = await this.jurorAccess(thesis._id, user);
+    if (access !== 'NONE')
+      return toThesisView(thesis, { kind: 'JUROR', access });
+    throw thesisNotFound();
+  }
+
+  /** GET /theses/mine: the student's theses without staff-only fields. */
+  async findMineView(user: AuthUser): Promise<Record<string, unknown>[]> {
+    const theses = await this.findMine(user.id);
+    return theses.map((t) =>
+      toThesisView(t, isStaff(user) ? { kind: 'STAFF' } : { kind: 'STUDENT' }),
+    );
+  }
+
+  /** Response of a manuscript upload: the uploader's own representation. */
+  viewAfterUpload(
+    thesis: ThesisDocument,
+    user: AuthUser,
+  ): Record<string, unknown> {
+    return toThesisView(
+      thesis,
+      isStaff(user) ? { kind: 'STAFF' } : { kind: 'STUDENT' },
+    );
   }
 
   /** RBAC "Si Aceptó": this user's active assignments on the thesis (scope-limited). */

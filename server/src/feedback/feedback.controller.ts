@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { FeedbackAction, Role } from '@thesis/shared';
+import { AllowScoped } from '../common/decorators/allow-scoped.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { ParseObjectIdPipe } from '../common/pipes/parse-object-id.pipe';
@@ -35,6 +36,7 @@ const JURORS = [Role.INTERNAL_JUROR, Role.EXTERNAL_JUROR];
 export class FeedbackController {
   constructor(private readonly feedback: FeedbackService) {}
 
+  @AllowScoped()
   @Get('theses/:id/feedback')
   @Roles(...READERS)
   list(
@@ -45,6 +47,7 @@ export class FeedbackController {
     return this.feedback.list(id, query, user);
   }
 
+  @AllowScoped()
   @Get('theses/:id/feedback/summary')
   @Roles(...READERS)
   summary(
@@ -66,6 +69,7 @@ export class FeedbackController {
   }
 
   /** CU-06: a juror with an ACCEPTED assignment adds an item (PENDING). */
+  @AllowScoped()
   @Post('theses/:id/feedback')
   @Roles(...JURORS)
   create(
@@ -92,6 +96,7 @@ export class FeedbackController {
     );
   }
 
+  @AllowScoped()
   @Post('feedback/:id/resolve')
   @HttpCode(200)
   @Roles(...JURORS)
@@ -108,6 +113,7 @@ export class FeedbackController {
     );
   }
 
+  @AllowScoped()
   @Post('feedback/:id/reopen')
   @HttpCode(200)
   @Roles(...JURORS)
@@ -124,6 +130,7 @@ export class FeedbackController {
     );
   }
 
+  @AllowScoped()
   @Post('feedback/:id/comment')
   @HttpCode(200)
   @Roles(...READERS)

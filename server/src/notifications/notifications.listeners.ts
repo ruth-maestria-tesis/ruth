@@ -1,11 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { InjectModel } from '@nestjs/mongoose';
-import { AssignmentStatus, Role } from '@thesis/shared';
+import { Role } from '@thesis/shared';
 import { Model, Types } from 'mongoose';
 import { ASSIGNMENT_EVENTS } from '../assignments/assignment.events';
 import type { AssignmentEvent } from '../assignments/assignment.events';
 import { Assignment } from '../assignments/schemas/assignment.schema';
+import { findActiveJurors } from '../defenses/active-jurors';
+import { Evaluation } from '../evaluations/schemas/evaluation.schema';
 import { Thesis } from '../theses/schemas/thesis.schema';
 import { THESIS_STATUS_CHANGED } from '../workflow/workflow.events';
 import type { ThesisStatusChangedEvent } from '../workflow/workflow.events';
@@ -48,6 +50,7 @@ interface ThesisInfo {
   id: string;
   label: string;
   studentId: string;
+  advisorId?: string;
 }
 
 @Injectable()
@@ -59,6 +62,8 @@ export class NotificationsListeners {
     @InjectModel(Thesis.name) private readonly theses: Model<Thesis>,
     @InjectModel(Assignment.name)
     private readonly assignments: Model<Assignment>,
+    @InjectModel(Evaluation.name)
+    private readonly evaluations: Model<Evaluation>,
   ) {}
 
   /** Listeners never throw into the emitter. */
@@ -77,7 +82,7 @@ export class NotificationsListeners {
   private async thesisInfo(thesisId?: string): Promise<ThesisInfo | null> {
     if (!thesisId || !Types.ObjectId.isValid(thesisId)) return null;
     const t = await this.theses
-      .findById(thesisId, { code: 1, title: 1, studentId: 1 })
+      .findById(thesisId, { code: 1, title: 1, studentId: 1, advisorId: 1 })
       .lean()
       .exec();
     if (!t) return null;
@@ -85,24 +90,18 @@ export class NotificationsListeners {
       id: String(t._id),
       label: `${t.code} — ${t.title}`,
       studentId: String(t.studentId),
+      advisorId: t.advisorId ? String(t.advisorId) : undefined,
     };
   }
 
+  /** Same rule as the defenses module: ACCEPTED primaries + a tiebreaker that SUBMITTED. */
   private async activeJurorIds(thesisId: string): Promise<string[]> {
-    const rows = await this.assignments
-      .find(
-        {
-          thesisId: new Types.ObjectId(thesisId),
-          isActive: true,
-          status: {
-            $in: [AssignmentStatus.PENDING, AssignmentStatus.ACCEPTED],
-          },
-        },
-        { jurorId: 1 },
-      )
-      .lean()
-      .exec();
-    return rows.map((r) => String(r.jurorId));
+    const jurors = await findActiveJurors(
+      this.assignments,
+      this.evaluations,
+      new Types.ObjectId(thesisId),
+    );
+    return jurors.map((j) => j.userId);
   }
 
   /** Student (+ active jurors / coordinators) of a thesis, for the loosely typed events. */
@@ -124,6 +123,7 @@ export class NotificationsListeners {
       body: b.body,
       link: b.link,
       entityRef: { kind: b.entity.kind, id: b.entity.id ?? thesisId ?? '' },
+      ...(t ? { thesisId: t.id } : {}),
     };
     if (!payload.entityRef?.id) delete payload.entityRef;
     const ids: string[] = [];
@@ -150,6 +150,7 @@ export class NotificationsListeners {
         body: `Fuiste asignado como jurado de la tesis ${t?.label ?? ''}. Responde dentro del plazo.`,
         link: '/juror',
         entityRef: { kind: 'assignment', id: e.assignmentId },
+        thesisId: e.thesisId,
       });
     });
   }
@@ -168,6 +169,7 @@ export class NotificationsListeners {
         body: `${what} de la tesis ${t?.label ?? ''}.${e.reason ? ` Motivo: ${e.reason}` : ''}`,
         link: `/coordinator/theses/${e.thesisId}`,
         entityRef: { kind: 'assignment', id: e.assignmentId },
+        thesisId: e.thesisId,
       });
     });
   }
@@ -212,6 +214,7 @@ export class NotificationsListeners {
         body: `Tu asignación como jurado de la tesis ${t?.label ?? ''} fue reemplazada por la coordinación.`,
         link: '/juror',
         entityRef: { kind: 'assignment', id: e.assignmentId },
+        thesisId: e.thesisId,
       });
     });
   }
@@ -223,13 +226,24 @@ export class NotificationsListeners {
     return this.safe(THESIS_STATUS_CHANGED, async () => {
       const t = await this.thesisInfo(e.thesisId);
       if (!t) return;
+      const status = STATUS_LABEL[e.to] ?? e.to;
       await this.notifications.notify([t.studentId], {
         type: THESIS_STATUS_CHANGED,
         title: 'Cambio de estado de tu tesis',
-        body: `Tu tesis ${t.label} cambió a: ${STATUS_LABEL[e.to] ?? e.to}.`,
+        body: `Tu tesis ${t.label} cambió a: ${status}.`,
         link: '/student',
         entityRef: { kind: 'thesis', id: e.thesisId },
+        thesisId: t.id,
       });
+      if (t.advisorId && t.advisorId !== t.studentId) {
+        await this.notifications.notify([t.advisorId], {
+          type: THESIS_STATUS_CHANGED,
+          title: 'Cambio de estado de una tesis que diriges',
+          body: `La tesis ${t.label} cambió a: ${status}.`,
+          entityRef: { kind: 'thesis', id: e.thesisId },
+          thesisId: t.id,
+        });
+      }
     });
   }
 
@@ -262,7 +276,9 @@ export class NotificationsListeners {
         title: 'Nueva observación de un jurado',
         body: `Recibiste una observación sobre la tesis ${t?.label ?? ''}. Revísala y atiéndela.`,
         link: '/student',
-        ...(thesisId ? { entityRef: { kind: 'thesis', id: thesisId } } : {}),
+        ...(t
+          ? { entityRef: { kind: 'thesis', id: t.id }, thesisId: t.id }
+          : {}),
       });
     });
   }
@@ -277,9 +293,62 @@ export class NotificationsListeners {
         title: 'Observación atendida',
         body: `El estudiante atendió una observación tuya en la tesis ${t?.label ?? ''}.`,
         link: '/juror',
-        ...(thesisId ? { entityRef: { kind: 'thesis', id: thesisId } } : {}),
+        ...(t
+          ? { entityRef: { kind: 'thesis', id: t.id }, thesisId: t.id }
+          : {}),
       });
     });
+  }
+
+  @OnEvent('feedback.reopened')
+  onFeedbackReopened(e?: LooseEvent) {
+    return this.safe('feedback.reopened', async () => {
+      const thesisId = str(e?.thesisId);
+      const t = await this.thesisInfo(thesisId);
+      await this.notifications.notify([str(e?.studentId) ?? t?.studentId], {
+        type: 'feedback.reopened',
+        title: 'Observación reabierta',
+        body: `Un jurado reabrió una observación sobre la tesis ${t?.label ?? ''}. Revísala y atiéndela de nuevo.`,
+        link: '/student',
+        ...(t
+          ? { entityRef: { kind: 'thesis', id: t.id }, thesisId: t.id }
+          : {}),
+      });
+    });
+  }
+
+  @OnEvent('defense.cancelled')
+  onDefenseCancelled(e?: LooseEvent) {
+    return this.safe('defense.cancelled', () =>
+      this.fanOut(
+        'defense.cancelled',
+        e,
+        { student: true, jurors: true },
+        (label) => ({
+          title: 'Sustentación cancelada',
+          body: `Se canceló la sustentación de la tesis ${label}.`,
+          link: '/student',
+          entity: { kind: 'defense', id: str(e?.defenseId) },
+        }),
+      ),
+    );
+  }
+
+  @OnEvent('defense.updated')
+  onDefenseUpdated(e?: LooseEvent) {
+    return this.safe('defense.updated', () =>
+      this.fanOut(
+        'defense.updated',
+        e,
+        { student: true, jurors: true },
+        (label) => ({
+          title: 'Sustentación reprogramada',
+          body: `La sustentación de la tesis ${label} fue reprogramada, confirme de nuevo.`,
+          link: '/student',
+          entity: { kind: 'defense', id: str(e?.defenseId) },
+        }),
+      ),
+    );
   }
 
   @OnEvent('defense.proposed')

@@ -1,12 +1,14 @@
 import { INestApplication } from '@nestjs/common';
-import { Role, ThesisStatus } from '@thesis/shared';
+import { EvaluationVerdict, Role, ThesisStatus } from '@thesis/shared';
 import {
   assignJury,
   closeTestApp,
   createAssignableThesis,
   createTestApp,
+  createThesisUnderEvaluation,
   createUser,
   loginAgent,
+  submitEvaluation,
 } from './utils/test-app';
 
 describe('Traceability graph (e2e)', () => {
@@ -88,5 +90,48 @@ describe('Traceability graph (e2e)', () => {
       (await createUser(app, { roles: [Role.COORDINATOR] })).email,
     );
     await coordinator.get(`/api/theses/${thesis.id}/graph`).expect(200);
+  });
+
+  it('hides draft evaluations except from staff and the draft author', async () => {
+    const fx = await createThesisUnderEvaluation(app);
+    const [author, peer] = await Promise.all(
+      fx.jurors.map((j) => loginAgent(app, j.email)),
+    );
+    await author
+      .put(`/api/assignments/${fx.assignmentIds[0]}/evaluation`)
+      .send({ verdict: EvaluationVerdict.REJECTED, comments: 'Borrador' })
+      .expect(200);
+    const coordinator = await loginAgent(
+      app,
+      (await createUser(app, { roles: [Role.COORDINATOR] })).email,
+    );
+    const evaluationNodes = async (agent: typeof author) =>
+      (
+        (
+          await agent
+            .get(`/api/theses/${fx.thesis.id as string}/graph`)
+            .expect(200)
+        ).body.nodes as { kind: string; label: string; status?: string }[]
+      ).filter((n) => n.kind === 'EVALUATION');
+
+    const student = await loginAgent(app, fx.student.email);
+    expect(await evaluationNodes(student)).toEqual([]);
+    expect(await evaluationNodes(peer)).toEqual([]);
+    for (const agent of [author, coordinator]) {
+      const nodes = await evaluationNodes(agent);
+      expect(nodes).toHaveLength(1);
+      expect(nodes[0].status).toBe('DRAFT');
+      expect(nodes[0].label).not.toContain('REJECTED');
+    }
+
+    await submitEvaluation(
+      app,
+      fx.assignmentIds[1],
+      fx.jurors[1],
+      EvaluationVerdict.APPROVED_FOR_DEFENSE,
+    );
+    const submitted = await evaluationNodes(student);
+    expect(submitted).toHaveLength(1);
+    expect(submitted[0].label).toContain('APPROVED_FOR_DEFENSE');
   });
 });

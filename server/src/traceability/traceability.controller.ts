@@ -1,6 +1,7 @@
 import { Controller, Get, Param } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Role } from '@thesis/shared';
+import { AllowScoped } from '../common/decorators/allow-scoped.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { ParseObjectIdPipe } from '../common/pipes/parse-object-id.pipe';
@@ -12,6 +13,7 @@ import { TraceabilityService } from './traceability.service';
 export class TraceabilityController {
   constructor(private readonly traceability: TraceabilityService) {}
 
+  @AllowScoped()
   @Get(':id/graph')
   @Roles(
     Role.ADMIN,

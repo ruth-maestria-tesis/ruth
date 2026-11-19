@@ -14,6 +14,7 @@ import { EvaluationsModule } from './evaluations/evaluations.module';
 import { FeedbackModule } from './feedback/feedback.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
+import { ScopedSessionGuard } from './common/guards/scoped-session.guard';
 import { envValidationSchema } from './config/env.validation';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { DefensesModule } from './defenses/defenses.module';
@@ -72,6 +73,7 @@ import { WorkflowModule } from './workflow/workflow.module';
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
+    { provide: APP_GUARD, useClass: ScopedSessionGuard },
   ],
 })
 export class AppModule {}

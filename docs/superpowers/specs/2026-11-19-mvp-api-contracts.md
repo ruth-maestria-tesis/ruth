@@ -150,7 +150,7 @@ View `MinutesView`:
 
 ## 6. notifications — module `notifications`
 
-View: `{ id, type, title, body, link?, entityRef?: { kind, id }, readAt?, createdAt }`. The `type` string matches the event name.
+View: `{ id, type, title, body, link?, entityRef?: { kind, id }, thesisId?, readAt?, createdAt }`. The `type` string matches the event name; `thesisId` is the thesis it is about (stored by every listener). A scoped external session (§9) only sees, counts and marks notifications about its assigned thesis (`thesisId`, or an `entityRef` to that thesis or assignment).
 
 | Route | Notes |
 |---|---|
@@ -166,13 +166,17 @@ Listeners (Spanish title and body; `link` is a client route):
 | assignment created | the juror |
 | declined, expired | every COORDINATOR |
 | accepted | COORDINATORs |
-| thesis status changed | the student, and the advisor if it is a user |
+| thesis status changed | the student and the advisor (`advisorId`) |
 | evaluation submitted | COORDINATORs, the student |
-| feedback created | the student |
+| feedback created, reopened | the student |
 | feedback addressed | the author juror |
-| defense proposed | the jurors and the student |
+| defense proposed | the active jurors and the student |
+| defense updated `{ thesisId, defenseId, actor }` | the active jurors and the student ("la sustentación fue reprogramada, confirme de nuevo") |
+| defense cancelled | the active jurors and the student |
 | defense confirmed | the coordinators and the student |
-| minutes sealed | the student and the jurors |
+| minutes sealed | the student and the active jurors |
+
+"Active jurors" use the defenses rule (`defenses/active-jurors.ts`): ACCEPTED active primaries, plus the tiebreaker only if it SUBMITTED.
 
 ## 7. dashboard — module `dashboard`
 
@@ -194,13 +198,32 @@ Listeners (Spanish title and body; `link` is a client route):
 ```
 - The STATUS nodes come from `history[]` in order: one node per entered status, plus the initial SUBMITTED.
 - The other entities link to the STATUS node during which they happened.
+- EVALUATION nodes: only SUBMITTED evaluations, except that staff (COORDINATOR/ADMIN) and the draft's own juror also see DRAFT ones. A draft label never includes the verdict.
 
 ## 9. external access (RF-J14) — stage-3 Task 7 (done)
 
 - `POST /assignments/:id/external-link` (COORDINATOR, no body) → `{ assignmentId, url, expiresAt }`; rotates the token. CU-01/replace responses already include the links.
-- `POST /auth/external/validate-token` `{ token }` (public) → 200 `{ user, assignmentId }`; sets only `access_token` (4 h); no refresh (401). A scoped session may use `/auth/me`, `/assignments/mine`, `/assignments/:id`, accept/decline, `GET /theses/:id` (PENDING/ACCEPTED) and the manuscript download (ACCEPTED). 401 `AUTH_EXTERNAL_TOKEN_INVALID` otherwise.
+- `POST /auth/external/validate-token` `{ token }` (public) → 200 `{ user, assignmentId }`; sets only `access_token`, valid for `min(EXTERNAL_SESSION_TTL_SECONDS (4 h), link expiry - now)`; no refresh (401).
+- **Deny by default.** A scoped session (`scope.assignmentIds` in the JWT) gets 401 `AUTH_EXTERNAL_TOKEN_INVALID` on every route not marked `@AllowScoped()` (`ScopedSessionGuard`, after JwtAuthGuard and RolesGuard; a route whose `@Roles` excludes EXTERNAL_JUROR still answers 403 first). Allowed routes, all limited to the assignment in scope and its thesis (404 for any other thesis):
+  - `GET /auth/me`, `POST /auth/logout`
+  - `GET /assignments/mine`, `GET /assignments/:id`, `POST /assignments/:id/accept`, `POST /assignments/:id/decline`
+  - `GET /theses/:id` (PENDING: metadata, `manuscripts: []`; ACCEPTED: with manuscripts), `GET /theses/:id/manuscripts/:fileId` (ACCEPTED)
+  - `GET /theses/:id/evaluations`, `GET`/`PUT /assignments/:id/evaluation`, `POST /assignments/:id/evaluation/submit`, `POST /evaluations/:id/corrections`, `GET /evaluations/:id`, `GET /evaluations/:id/files/:fileId`
+  - `GET /theses/:id/feedback`, `GET /theses/:id/feedback/summary`, `POST /theses/:id/feedback`, `POST /feedback/:id/resolve`, `POST /feedback/:id/reopen`, `POST /feedback/:id/comment`
+  - `GET /theses/:id/defense`, `GET /defenses/:id`, `POST /defenses/:id/confirm`
+  - `GET /theses/:id/minutes`, `GET /minutes/:id`, `POST /minutes/:id/sign`, `GET /minutes/:id/pdf`
+  - `GET /theses/:id/graph`
+  - `/notifications/*` (filtered to the assigned thesis, §6)
+- Everything else is 401, including `GET /defenses`, the catalogs (`/programs`, `/periods`, `/cohorts`) and `PATCH /auth/password`.
+- Every authenticated request also checks that the user still exists and is active (401 `AUTH_UNAUTHENTICATED` otherwise).
 - The client route for the link is `/auth/external-access?token=…`.
-- Implemented in commit 3a4f649.
+
+## 9.1 Thesis view (privacy)
+
+`GET /theses/:id`, `GET /theses/mine` and the manuscript upload response are role-specific:
+- COORDINATOR/ADMIN (unscoped): the whole document (`GET /theses` is staff-only and unchanged).
+- STUDENT (owner) and jurors: no `conflictOfInterestUserIds`, no `seedTag`; `history[]` entries keep only `from`, `to`, `at`, `actorRole`, `reason?` (no `actorId`, no `evidenceFileIds`). Advisor ids (`advisorId`, `coAdvisorIds`) stay.
+- Jurors see `manuscripts` (and `currentManuscriptId`) only with an ACCEPTED assignment; with PENDING, `manuscripts: []` and no `currentManuscriptId`.
 
 ## 10. Seed (MVP)
 

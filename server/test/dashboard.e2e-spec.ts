@@ -1,6 +1,11 @@
 import { INestApplication } from '@nestjs/common';
 import { getModelToken } from '@nestjs/mongoose';
-import { AssignmentStatus, Role, ThesisStatus } from '@thesis/shared';
+import {
+  AssignmentStatus,
+  EvaluationVerdict,
+  Role,
+  ThesisStatus,
+} from '@thesis/shared';
 import { Model } from 'mongoose';
 import { Assignment } from '../src/assignments/schemas/assignment.schema';
 import { Thesis } from '../src/theses/schemas/thesis.schema';
@@ -11,8 +16,10 @@ import {
   createCatalog,
   createTestApp,
   createThesis,
+  createThesisUnderEvaluation,
   createUser,
   loginAgent,
+  submitEvaluation,
   TestAgent,
 } from './utils/test-app';
 
@@ -122,6 +129,69 @@ describe('Dashboard (e2e)', () => {
     const due = alerts.filter((x) => x.kind === 'RESPONSE_DUE_SOON');
     expect(due).toHaveLength(2);
     expect(due[0].thesisId).toBe(thesis.id);
+  });
+
+  it('skips past-due and inactive pending assignments for RESPONSE_DUE_SOON', async () => {
+    const catalog = await createCatalog(app);
+    const thesis = await createAssignableThesis(app, catalog);
+    const jurors = [
+      await createUser(app, { roles: [Role.INTERNAL_JUROR] }),
+      await createUser(app, { roles: [Role.INTERNAL_JUROR] }),
+    ];
+    const { assignments: created } = await assignJury(
+      app,
+      thesis.id as string,
+      jurors.map((j) => j.id as string),
+    );
+    // One already past its deadline, the other due soon but no longer active.
+    await assignments.updateOne(
+      { _id: created[0].id },
+      { $set: { responseDeadline: new Date(Date.now() - 3_600_000) } },
+    );
+    await assignments.updateOne(
+      { _id: created[1].id },
+      {
+        $set: {
+          responseDeadline: new Date(Date.now() + 3_600_000),
+          isActive: false,
+        },
+      },
+    );
+    const res = await coordinator
+      .get(`/api/dashboard/coordinator?cohortId=${catalog.cohortId}`)
+      .expect(200);
+    const kinds = (res.body.alerts as { kind: string }[]).map((x) => x.kind);
+    expect(kinds).not.toContain('RESPONSE_DUE_SOON');
+  });
+
+  it('flags EVALUATION_OVERDUE per assignment, only while UNDER_EVALUATION', async () => {
+    const catalog = await createCatalog(app);
+    const fx = await createThesisUnderEvaluation(app, catalog);
+    await submitEvaluation(
+      app,
+      fx.assignmentIds[0],
+      fx.jurors[0],
+      EvaluationVerdict.APPROVED_FOR_DEFENSE,
+    );
+    await assignments.updateMany(
+      { thesisId: fx.thesis._id },
+      { $set: { evaluationDeadline: new Date(Date.now() - 86_400_000) } },
+    );
+    const url = `/api/dashboard/coordinator?cohortId=${catalog.cohortId}`;
+    const res = await coordinator.get(url).expect(200);
+    const overdue = (
+      res.body.alerts as { kind: string; thesisId: string }[]
+    ).filter((x) => x.kind === 'EVALUATION_OVERDUE');
+    // Only the juror who has not submitted.
+    expect(overdue).toEqual([
+      expect.objectContaining({ thesisId: fx.thesis.id }),
+    ]);
+
+    await setStatus(fx.thesis._id, ThesisStatus.IN_DISPUTE);
+    const later = await coordinator.get(url).expect(200);
+    expect(
+      (later.body.alerts as { kind: string }[]).map((x) => x.kind),
+    ).not.toContain('EVALUATION_OVERDUE');
   });
 
   it('forbids students (403); admins are allowed', async () => {

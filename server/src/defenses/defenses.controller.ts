@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Role } from '@thesis/shared';
+import { AllowScoped } from '../common/decorators/allow-scoped.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { orJsonNull } from '../common/http/json-null';
@@ -42,6 +43,7 @@ export class DefensesController {
     return this.defenses.list(query, user);
   }
 
+  @AllowScoped()
   @Get('defenses/:id')
   @Roles(...READERS)
   findOne(
@@ -51,6 +53,7 @@ export class DefensesController {
     return this.defenses.findOneView(id, user);
   }
 
+  @AllowScoped()
   @Get('theses/:id/defense')
   @Roles(...READERS)
   @Header('Content-Type', 'application/json')
@@ -82,6 +85,7 @@ export class DefensesController {
     return this.defenses.update(id, dto, user);
   }
 
+  @AllowScoped()
   @Post('defenses/:id/confirm')
   @HttpCode(200)
   @Roles(Role.INTERNAL_JUROR, Role.EXTERNAL_JUROR)

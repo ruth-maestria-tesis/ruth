@@ -65,8 +65,8 @@ Prefijo global de la API: `/api`. Documentación con Swagger en `/api/docs`.
 ### 2.2 Acceso de jurado externo (RF-J14)
 - Al asignar un jurado externo se genera un token aleatorio de 32 bytes (base64url). Se guarda **solo su hash SHA-256**, con `expiresAt` y vinculado a `assignmentId`.
 - Como no hay envío de correo, el coordinador obtiene el enlace (`{CLIENT_URL}/auth/external-access?token=…`) desde `POST /assignments/:id/external-link` (lo regenera e invalida el anterior; también se devuelve al asignar) y se lo envía por su cuenta.
-- `POST /auth/external/validate-token` cambia el token por una sesión JWT con rol `EXTERNAL_JUROR` y el claim `scope: { assignmentIds: [...] }`. Esa sesión solo puede operar sobre la tesis asignada.
-- La sesión externa no tiene refresh token; dura `EXTERNAL_SESSION_TTL_SECONDS` y el enlace sirve mientras la asignación esté `PENDING` o `ACCEPTED` y no venza (`EXTERNAL_TOKEN_TTL_DAYS`).
+- `POST /auth/external/validate-token` cambia el token por una sesión JWT con rol `EXTERNAL_JUROR` y el claim `scope: { assignmentIds: [...] }`. Esa sesión solo puede operar sobre la tesis asignada: denegación por defecto (`ScopedSessionGuard`), solo las rutas marcadas con `@AllowScoped()` responden y las demás dan 401 `AUTH_EXTERNAL_TOKEN_INVALID` (lista en el contrato MVP §9).
+- La sesión externa no tiene refresh token; dura `min(EXTERNAL_SESSION_TTL_SECONDS, vencimiento del enlace - ahora)` y el enlace sirve mientras la asignación esté `PENDING` o `ACCEPTED` y no venza (`EXTERNAL_TOKEN_TTL_DAYS`).
 
 ### 2.3 Autorización
 - Roles: `ADMIN`, `COORDINATOR`, `INTERNAL_JUROR`, `EXTERNAL_JUROR`, `STUDENT`.

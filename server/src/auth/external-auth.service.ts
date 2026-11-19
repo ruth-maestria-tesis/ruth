@@ -30,10 +30,21 @@ export class ExternalAuthService {
     return Number(this.config.get('EXTERNAL_SESSION_TTL_SECONDS', 14_400));
   }
 
+  /** Session lifetime: the configured TTL, never past the link's own expiry. */
+  sessionTtlFor(linkExpiresAt: Date | undefined, now = new Date()): number {
+    const ttl = this.sessionTtlSeconds;
+    if (!linkExpiresAt) return ttl;
+    const remaining = Math.floor(
+      (linkExpiresAt.getTime() - now.getTime()) / 1000,
+    );
+    return Math.max(0, Math.min(ttl, remaining));
+  }
+
   async exchange(token: string): Promise<{
     user: UserDocument;
     assignmentId: string;
     accessToken: string;
+    expiresInSeconds: number;
   }> {
     const assignment = await this.assignments.findByExternalTokenHash(
       sha256(token),
@@ -43,6 +54,10 @@ export class ExternalAuthService {
       .findById(assignment.jurorId.toHexString())
       .catch(() => null);
     if (!user?.isActive || !isExternalOnly(user.roles)) throw invalidToken();
+    const expiresInSeconds = this.sessionTtlFor(
+      assignment.externalTokenExpiresAt,
+    );
+    if (expiresInSeconds <= 0) throw invalidToken();
     const assignmentId = assignment.id as string;
     const payload: AccessTokenPayload = {
       sub: user.id as string,
@@ -52,8 +67,8 @@ export class ExternalAuthService {
     };
     const accessToken = await this.jwt.signAsync(payload, {
       secret: this.config.getOrThrow<string>('JWT_ACCESS_SECRET'),
-      expiresIn: this.sessionTtlSeconds,
+      expiresIn: expiresInSeconds,
     });
-    return { user, assignmentId, accessToken };
+    return { user, assignmentId, accessToken, expiresInSeconds };
   }
 }

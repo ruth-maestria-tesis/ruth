@@ -115,7 +115,7 @@ const COLORS = { done: '#16A34A', current: '#0284C7', future: '#CBD5E1', skipped
           <div class="text-body-2"><strong>Responsable:</strong> {{ ROLE_LABELS[e.actorRole as keyof typeof ROLE_LABELS] ?? e.actorRole }}</div>
           <div class="text-body-2"><strong>Permanencia:</strong> {{ duration(e) }}</div>
           <div v-if="e.reason" class="text-body-2"><strong>Motivo:</strong> {{ e.reason }}</div>
-          <div v-if="e.evidenceFileIds.length" class="text-body-2"><strong>Evidencias:</strong> {{ e.evidenceFileIds.length }} archivo(s)</div>
+          <div v-if="e.evidenceFileIds?.length" class="text-body-2"><strong>Evidencias:</strong> {{ e.evidenceFileIds.length }} archivo(s)</div>
         </v-card>
       </div>
     </v-navigation-drawer>
