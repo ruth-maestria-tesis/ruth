@@ -77,3 +77,15 @@ pnpm --filter server seed -- --reset --tag=QA # otra etiqueta (se normaliza a ma
 | EXTERNAL_JUROR (3) | `diego.quintero@externo.example.org`, `mariajose.fernandez@externo.example.org`, `ricardo.salazar@externo.example.org` | sin contraseña (enlace externo) |
 
 Programa MIETIA, periodos 2025-II y 2026-I, dos cohortes y 15 tesis (`DEMO-MIETIA-…`) con al menos una en cada estado. Para el portal del jurado, `jurado1` tiene una asignación PENDIENTE por aceptar (tesis 2025-II-003) y otra ACEPTADA en evaluación con un borrador (2025-II-005).
+
+## Tareas programadas y alertas
+
+- `expirePending` corre cada hora (vence asignaciones `PENDING` y reconcilia RN-08). Las alertas corren a diario a las 07:00 America/Bogota. Todo está desactivado con `NODE_ENV=test`.
+- Trabajos de alerta (idempotentes; cada uno marca lo ya enviado):
+  - `overdueEvaluations`: concepto vencido, avisa al jurado y a los coordinadores (`overdueNotifiedAt`; se repite cada `overdueRenotifyBusinessDays` días hábiles, 0 = una vez).
+  - `deadlineReminders`: recordatorio al jurado cuando faltan `reminderBusinessDaysBefore` días hábiles o menos para responder o evaluar (`responseReminderSentAt`, `evaluationReminderSentAt`).
+  - `unseenConceptAlerts`: el estudiante no vio ni descargó el concepto tras `unseenConceptAlertDays` días hábiles; avisa a los coordinadores (`unseenAlertSentAt`).
+- Ajustes en `PATCH /api/settings`: `reminderBusinessDaysBefore` (2), `overdueRenotifyBusinessDays` (5), `unseenConceptAlertDays` (3).
+- Ejecución manual para la demo (ADMIN): `POST /api/admin/jobs/run` con `{ "job": "all" }` (o `expirePending`, `reconcile`, `overdueEvaluations`, `deadlineReminders`, `unseenConceptAlerts`); responde los conteos por trabajo.
+- Detalle en `docs/superpowers/specs/2026-11-19-mvp-api-contracts.md` §11.
+

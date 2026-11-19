@@ -19,6 +19,14 @@ export class Settings {
   @Prop({ required: true, default: 3, min: 1, max: 60 })
   unseenConceptAlertDays!: number;
 
+  /** Deadline reminders go out when this many business days or fewer remain. */
+  @Prop({ required: true, default: 2, min: 1, max: 10 })
+  reminderBusinessDaysBefore!: number;
+
+  /** Overdue-evaluation re-notification period in business days; 0 = notify only once. */
+  @Prop({ required: true, default: 5, min: 0, max: 60 })
+  overdueRenotifyBusinessDays!: number;
+
   /** 'YYYY-MM-DD' dates of the Bogotá calendar excluded from business days. */
   @Prop({ type: [String], default: [] })
   holidays!: string[];

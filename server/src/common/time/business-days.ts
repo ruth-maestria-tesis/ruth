@@ -63,6 +63,15 @@ export function businessDaysRemaining(
   return count;
 }
 
+/** Business days elapsed in (from's local day, to's local day]; 0 when `to` is not after `from`. */
+export function businessDaysBetween(
+  from: Date,
+  to: Date,
+  holidays: ReadonlySet<string>,
+): number {
+  return businessDaysRemaining(from, to, holidays);
+}
+
 export function calendarDaysBetween(from: Date, to: Date): number {
   const diff =
     keyToUtcMidnight(localDateKey(to)) - keyToUtcMidnight(localDateKey(from));

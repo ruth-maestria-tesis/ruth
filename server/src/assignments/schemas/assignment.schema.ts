@@ -59,6 +59,16 @@ export class Assignment {
   @Prop()
   evaluationDeadline?: Date;
 
+  /** Alert-job markers: when each notification was last sent (idempotency, see scheduler). */
+  @Prop()
+  responseReminderSentAt?: Date;
+
+  @Prop()
+  evaluationReminderSentAt?: Date;
+
+  @Prop()
+  overdueNotifiedAt?: Date;
+
   /** The assignment that took this slot after a decline, expiry or replacement. */
   @Prop({ type: ObjectId, ref: 'Assignment' })
   replacedById?: Types.ObjectId;

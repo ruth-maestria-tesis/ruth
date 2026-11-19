@@ -30,6 +30,18 @@ export class UpdateSettingsDto {
   unseenConceptAlertDays?: number;
 
   @IsOptionalNonNull()
+  @IsInt()
+  @Min(1)
+  @Max(10)
+  reminderBusinessDaysBefore?: number;
+
+  @IsOptionalNonNull()
+  @IsInt()
+  @Min(0)
+  @Max(60)
+  overdueRenotifyBusinessDays?: number;
+
+  @IsOptionalNonNull()
   @IsArray()
   @ArrayMaxSize(100)
   @ArrayUnique()
