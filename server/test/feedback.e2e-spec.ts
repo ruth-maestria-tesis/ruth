@@ -290,6 +290,37 @@ describe('Feedback — CU-06 / RN-06 (e2e)', () => {
     expect(res.body.code).toBe('FEEDBACK_THESIS_STATUS');
   });
 
+  it('closes address/resolve/reopen/comment on terminal theses and DEFENSE_SCHEDULED', async () => {
+    const { thesisId, juror1, studentAgent } = await setup();
+    const item = (await create(juror1, thesisId).expect(201)).body;
+    await studentAgent
+      .post(`/api/feedback/${item.id}/address`)
+      .send({ content: 'Corregido' })
+      .expect(200);
+    for (const closed of [
+      ThesisStatus.DEFENSE_SCHEDULED,
+      ThesisStatus.NOT_APPROVED,
+      ThesisStatus.COMPLETED_APPROVED,
+      ThesisStatus.COMPLETED_FAILED,
+    ]) {
+      await theses.updateOne({ _id: thesisId }, { $set: { status: closed } });
+      const calls = [
+        studentAgent
+          .post(`/api/feedback/${item.id}/address`)
+          .send({ content: 'x' }),
+        juror1.post(`/api/feedback/${item.id}/resolve`).send({}),
+        juror1.post(`/api/feedback/${item.id}/reopen`).send({ content: 'x' }),
+        studentAgent
+          .post(`/api/feedback/${item.id}/comment`)
+          .send({ content: 'x' }),
+      ];
+      for (const call of calls) {
+        const res = await call.expect(409);
+        expect(res.body.code).toBe('FEEDBACK_THESIS_STATUS');
+      }
+    }
+  });
+
   it('REVISIONS_IN_PROGRESS moves to READY_FOR_DEFENSE when the last item is resolved', async () => {
     const { thesisId, juror1, juror2, studentAgent, assignmentIds, jurors } =
       await setup();

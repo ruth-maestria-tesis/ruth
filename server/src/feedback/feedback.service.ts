@@ -23,6 +23,7 @@ import { CreateFeedbackDto, QueryFeedbackDto } from './dto/feedback.dto';
 import { FEEDBACK_EVENTS, FeedbackEvent } from './feedback.events';
 import {
   CHAPTER_ORDER,
+  FEEDBACK_CLOSED_STATUSES,
   FEEDBACK_OPEN_STATUSES,
   FEEDBACK_TRANSITIONS,
 } from './feedback.rules';
@@ -94,6 +95,17 @@ const invalidTransition = (status: FeedbackStatus, action: FeedbackAction) =>
     `Cannot ${action} an item that is ${status}`,
     { status, action },
   );
+
+const assertNotClosed = (thesis: ThesisDocument) => {
+  if (FEEDBACK_CLOSED_STATUSES.includes(thesis.status)) {
+    throw new AppException(
+      ErrorCode.FEEDBACK_THESIS_STATUS,
+      HttpStatus.CONFLICT,
+      `Feedback is closed while the thesis is ${thesis.status}`,
+      { status: thesis.status },
+    );
+  }
+};
 
 const withId = (d: FeedbackItemDocument) =>
   d as FeedbackItemDocument & { id: string; createdAt: Date; updatedAt: Date };
@@ -202,6 +214,7 @@ export class FeedbackService {
   ): Promise<FeedbackItemView> {
     const item = await this.findItem(id);
     const ctx = await this.access(item.thesisId.toHexString(), user, true);
+    assertNotClosed(ctx.thesis);
     const rule = FEEDBACK_TRANSITIONS[action];
     const allowed =
       rule.by === 'STUDENT'
@@ -256,7 +269,8 @@ export class FeedbackService {
     user: AuthUser,
   ): Promise<FeedbackItemView> {
     const item = await this.findItem(id);
-    await this.access(item.thesisId.toHexString(), user, true);
+    const ctx = await this.access(item.thesisId.toHexString(), user, true);
+    assertNotClosed(ctx.thesis);
     const actor = actorFrom(user, ...READER_ROLES);
     const updated = await this.model
       .findByIdAndUpdate(

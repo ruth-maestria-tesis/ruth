@@ -43,6 +43,9 @@ View `EvaluationView`:
 | `POST /evaluations/:id/corrections` | the author, while DRAFT | multipart `file` (pdf/doc/docx, ≤25 MB) → `EvaluationView` |
 | `GET /evaluations/:id` | as for the list | Logs `VIEW` when a STUDENT reads it |
 | `GET /evaluations/:id/files/:fileId` | as for the list | Download; logs `DOWNLOAD` for a STUDENT |
+| `POST /theses/:id/evaluation-outcome/reconcile` | COORDINATOR, ADMIN | No body. Re-applies RN-08 from the stored evaluations (retry after a failed transition). Idempotent. 200 `{ thesisId, status, changed }`, where `changed` is true when this call moved the thesis. 409 `EVALUATION_NOT_COMPLETE` while neither both PRIMARY nor the TIEBREAKER evaluation is SUBMITTED |
+
+Draft body: `comments: null` is stored as `''`; `rubric: null` clears the rubric and score; `verdict: null` clears the verdict.
 
 RN-08 runs after a submit:
 - **Both PRIMARY submitted:**
@@ -52,6 +55,9 @@ RN-08 runs after a submit:
 - **TIEBREAKER submitted** (thesis `IN_DISPUTE`):
   - `APPROVED` → the same revisions/ready rule;
   - `REJECTED` → `NOT_APPROVED`.
+- Any `APPROVED_WITH_CHANGES` among the PRIMARY verdicts leads to `REVISIONS_IN_PROGRESS` even when there are no feedback items; the coordinator then uses `POST /theses/:id/ready-for-defense` (section 3).
+- RN-08 is applied by `reconcileOutcome` (same code as the endpoint). If the transition fails after a submit, the evaluation stays stored and the error is only logged; the hourly scheduler pass reconciles every thesis in `UNDER_EVALUATION` or `IN_DISPUTE` whose required evaluations are all `SUBMITTED` (system actor).
+- Event `evaluation.submitted` is emitted after RN-08 ran. Payload `{ thesisId, evaluationId, jurorId, verdict, resultingStatus?, actor }`; `resultingStatus` is the thesis status after RN-08.
 
 ## 2. disputes (CU-05) — inside `assignments` + `evaluations`
 
@@ -59,6 +65,7 @@ RN-08 runs after a submit:
 |---|---|---|
 | `GET /theses/:id/dispute` | COORDINATOR, ADMIN | `{ thesisId, status, primary: EvaluationView[], tiebreaker: { assignment: AssignmentView, evaluation: EvaluationView \| null } \| null }` |
 | `POST /theses/:id/assignments/tiebreaker` | COORDINATOR | Same body as one CU-01 juror: `{ jurorId }` or `{ newExternal }`, plus an optional `responseBusinessDays`. Thesis must be `IN_DISPUTE` (else 409 `ASSIGNMENT_THESIS_STATUS`). Creates slot 3 `TIEBREAKER`, `PENDING`. RN-01 applies and the juror must not be a PRIMARY on this thesis. Response `{ assignment: AssignmentView, externalLink? }`. 409 `ASSIGNMENT_CONFLICT` if an active tiebreaker exists |
+| `POST /theses/:id/assignments/replace` (thesis `IN_DISPUTE`) | COORDINATOR | `{ assignmentId, juror, responseBusinessDays? }` where `assignmentId` is the TIEBREAKER. Replaceable: `PENDING`, `DECLINED`/`EXPIRED` (not yet replaced), or `ACCEPTED` whose evaluation is not SUBMITTED (a stuck tiebreaker). The new assignment is a `TIEBREAKER` in slot 3, `PENDING`; the old one becomes `REPLACED` (inactive) and its DRAFT evaluation is deleted. Response as for the tiebreaker designation. 409 `ASSIGNMENT_NOT_REPLACEABLE` if the tiebreaker already submitted; a PRIMARY in this status gives 409 `ASSIGNMENT_THESIS_STATUS`. The thesis status does not change |
 
 - The tiebreaker accepts or declines through the existing CU-08 endpoints.
 - A decline or expiry leaves the thesis `IN_DISPUTE`, and the coordinator assigns another.
@@ -89,6 +96,8 @@ View `FeedbackItemView`:
 
 - A wrong-state transition returns 409 `FEEDBACK_INVALID_TRANSITION`.
 - Items can only be created while the thesis is `UNDER_EVALUATION`, `IN_DISPUTE` or `REVISIONS_IN_PROGRESS`. Otherwise 409 `FEEDBACK_THESIS_STATUS`.
+- Address, resolve, reopen and comment return 409 `FEEDBACK_THESIS_STATUS` when the thesis is `DEFENSE_SCHEDULED`, `NOT_APPROVED`, `COMPLETED_APPROVED` or `COMPLETED_FAILED`.
+- `POST /theses/:id/ready-for-defense` (COORDINATOR, no body): `REVISIONS_IN_PROGRESS` → `READY_FOR_DEFENSE` when no feedback item is unresolved (e.g. RN-08 sent the thesis to revisions because of `APPROVED_WITH_CHANGES` with no items). Returns the thesis. 409 `WORKFLOW_INVALID_TRANSITION` if the thesis is not in `REVISIONS_IN_PROGRESS`; 409 `FEEDBACK_INVALID_TRANSITION` (`details.unresolved`) while items remain unresolved.
 - **Auto:** when the thesis is `REVISIONS_IN_PROGRESS` and `countUnresolved` reaches 0 after a resolve → `READY_FOR_DEFENSE`.
 - `FeedbackService.countUnresolved(thesisId)` is exported for evaluations.
 

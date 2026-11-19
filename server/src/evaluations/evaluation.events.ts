@@ -1,4 +1,4 @@
-import type { EvaluationVerdict } from '@thesis/shared';
+import type { EvaluationVerdict, ThesisStatus } from '@thesis/shared';
 import type { Actor } from '../common/types/actor';
 
 export const EVALUATION_SUBMITTED = 'evaluation.submitted';
@@ -9,5 +9,7 @@ export interface EvaluationSubmittedEvent {
   evaluationId: string;
   jurorId: string;
   verdict: EvaluationVerdict;
+  /** Thesis status after RN-08 ran (undefined if it could not be read). */
+  resultingStatus?: ThesisStatus;
   actor: Actor;
 }
