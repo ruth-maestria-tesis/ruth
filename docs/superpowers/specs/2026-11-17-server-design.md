@@ -64,8 +64,9 @@ Prefijo global de la API: `/api`. Documentación con Swagger en `/api/docs`.
 
 ### 2.2 Acceso de jurado externo (RF-J14)
 - Al asignar un jurado externo se genera un token aleatorio de 32 bytes (base64url). Se guarda **solo su hash SHA-256**, con `expiresAt` y vinculado a `assignmentId`.
-- Como no hay envío de correo, el coordinador obtiene el enlace (`{CLIENT_URL}/auth/external-access?token=…`) desde `GET /assignments/:id/external-link` (lo regenera e invalida el anterior) y se lo envía por su cuenta.
+- Como no hay envío de correo, el coordinador obtiene el enlace (`{CLIENT_URL}/auth/external-access?token=…`) desde `POST /assignments/:id/external-link` (lo regenera e invalida el anterior; también se devuelve al asignar) y se lo envía por su cuenta.
 - `POST /auth/external/validate-token` cambia el token por una sesión JWT con rol `EXTERNAL_JUROR` y el claim `scope: { assignmentIds: [...] }`. Esa sesión solo puede operar sobre la tesis asignada.
+- La sesión externa no tiene refresh token; dura `EXTERNAL_SESSION_TTL_SECONDS` y el enlace sirve mientras la asignación esté `PENDING` o `ACCEPTED` y no venza (`EXTERNAL_TOKEN_TTL_DAYS`).
 
 ### 2.3 Autorización
 - Roles: `ADMIN`, `COORDINATOR`, `INTERNAL_JUROR`, `EXTERNAL_JUROR`, `STUDENT`.
@@ -181,6 +182,7 @@ Todas las colecciones tienen `createdAt` y `updatedAt` (timestamps de Mongoose).
   - `status` (`PENDING` | `ACCEPTED` | `DECLINED` | `EXPIRED` | `REPLACED`).
   - `assignedAt`, `assignedBy`, `responseDeadline`, `respondedAt?`, `declineReason?` (máximo 500 caracteres).
   - `evaluationDeadline?` (se calcula al aceptar), `externalTokenHash?`, `externalTokenExpiresAt?`.
+  - `isActive` (verdadero mientras está `PENDING` o `ACCEPTED`; respalda índices únicos parciales por `slot` y por jurado), `replacedById?`.
 - **evaluations**:
   - `assignmentId`, `thesisId`, `jurorId`.
   - `rubric: { methodology, relevance, writingQuality }` (enteros 1–5), `score` (promedio).
@@ -221,7 +223,7 @@ Todas las colecciones tienen `createdAt` y `updatedAt` (timestamps de Mongoose).
 - **RF-C13 / RN-01 (asignación):** exactamente 2 jurados `PRIMARY` activos y al menos uno con `jurorProfile.isUnicordoba = true`. Ningún jurado puede ser `advisorId`, estar en `coAdvisorIds`, estar en `conflictOfInterestUserIds` ni ser el estudiante. Además existe `POST /assignments/validate`, que valida sin guardar y que el cliente usa para la validación en vivo.
 - **Jurado externo nuevo (RF-C14):** se puede crear en línea durante la asignación (`institution`, `highestDegree`, `country`, `email`). Se crea un usuario con rol `EXTERNAL_JUROR` y sin contraseña.
 - **CU-08:** aceptar o declinar solo mientras la asignación esté `PENDING` y antes de `responseDeadline`. Para declinar el motivo es obligatorio. Al declinar, la asignación pasa a `DECLINED`, la tesis a `PENDING_JUROR_REPLACEMENT` y el coordinador recibe una alerta. Al aceptar se calcula `evaluationDeadline` en días hábiles.
-- **Cuenta regresiva (sugerencia 8):** las respuestas de asignaciones incluyen campos calculados: `assignedAt`, `daysSinceAssigned`, `responseDaysRemaining` y `evaluationDaysRemaining` (días hábiles, descontando `settings.holidays`).
+- **Cuenta regresiva (sugerencia 8):** las respuestas de asignaciones incluyen campos calculados: `assignedAt`, `daysSinceAssigned`, `responseDaysRemaining`, `evaluationDaysRemaining` (días hábiles, descontando `settings.holidays`) e `isResponseOverdue`. Las fechas se calculan con el calendario de America/Bogotá.
 - **CU-02:** una evaluación solo se puede emitir si la asignación está `ACCEPTED`. Después de `SUBMITTED` no se puede editar (409 `EVALUATION_LOCKED`).
 - **RN-06:**
   - solo el jurado autor crea observaciones (quedan `PENDING`),
@@ -270,7 +272,8 @@ Todas las rutas van bajo `/api`. Los listados usan paginación con `?page=&limit
   - `GET /assignments/mine` (jurado)
   - `POST /assignments/:id/accept | decline`
   - `POST /theses/:id/assignments/replace`, `POST /theses/:id/assignments/tiebreaker` (CU-05)
-  - `GET /assignments/:id/external-link`
+  - `GET /theses/:id/assignments`, `GET /assignments/:id`
+  - `POST /assignments/:id/external-link`
 - `evaluations`: `GET /theses/:id/evaluations`, `PUT /assignments/:id/evaluation` (borrador), `POST /assignments/:id/evaluation/submit`, `POST /evaluations/:id/corrections`, `GET /evaluations/:id`, `GET /evaluations/:id/files/:fileId`
 - `feedback`: `GET /theses/:id/feedback?chapter=`, `POST /theses/:id/feedback`, `POST /feedback/:id/address | resolve | reopen | comment`
 - `disputes`: `GET /theses/:id/dispute` (comparativo)

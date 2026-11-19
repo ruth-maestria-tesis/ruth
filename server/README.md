@@ -43,3 +43,13 @@ Swagger: `http://localhost:3001/api/docs`, disponible solo cuando `NODE_ENV=deve
 - `GET /api/theses/mine` (STUDENT), `GET /api/theses/:id`, `PATCH /api/theses/:id`.
 - `POST /api/theses/:id/manuscripts` (multipart, campo `file`, solo PDF, máx. 25 MB; lo pueden subir COORDINATOR y el STUDENT dueño de la tesis) y `GET /api/theses/:id/manuscripts/:fileId` (ADMIN, COORDINATOR y STUDENT dueño). El nombre de archivo admite caracteres no ASCII (tildes, ñ).
 - Nota: los cambios de estado solo ocurren mediante `WorkflowService` (sub-etapas siguientes); se emite el evento `thesis.status.changed`.
+
+## Asignación de jurados (sub-etapa 3)
+- Configuración: `GET|PATCH /api/settings` (plazos en días hábiles y festivos `YYYY-MM-DD`; el administrador carga el calendario de festivos de Colombia). Los días hábiles se calculan con la hora de Bogotá; el plazo vence al final del último día hábil.
+- CU-01: `POST /api/theses/:id/assignments` con `jurors: [{ jurorId } | { newExternal }]` (exactamente 2, al menos uno de Unicórdoba, sin conflicto de interés) y `responseBusinessDays` opcional; `POST /api/assignments/validate` para la validación en vivo; `GET /api/theses/:id/assignments`.
+- CU-08: `GET /api/assignments/mine`, `GET /api/assignments/:id`, `POST /api/assignments/:id/accept`, `POST /api/assignments/:id/decline` (`reason` obligatorio). Campos de cuenta regresiva: `daysSinceAssigned`, `responseDaysRemaining`, `evaluationDaysRemaining`, `isResponseOverdue`.
+- Reemplazo: `POST /api/theses/:id/assignments/replace`.
+- Acceso del jurado a la tesis: con una asignación `PENDING` o `ACCEPTED` ve `GET /api/theses/:id`; el manuscrito solo después de aceptar. En otro caso, 404.
+- Jurado externo: el coordinador obtiene el enlace con `POST /api/assignments/:id/external-link` (también viene en la respuesta de la asignación) y lo envía por su cuenta; `POST /api/auth/external/validate-token` con `{ token }` abre una sesión limitada a esa asignación (solo cookie `access_token`, sin contraseña, sin refresh). Variables `EXTERNAL_TOKEN_TTL_DAYS` y `EXTERNAL_SESSION_TTL_SECONDS`.
+- Los jurados externos nunca tienen contraseña.
+- El vencimiento automático de asignaciones (`expirePending`) se programará en la sub-etapa 8.
