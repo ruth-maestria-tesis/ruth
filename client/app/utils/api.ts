@@ -3,6 +3,7 @@
  * `utils/mocks.ts` when listed in runtimeConfig.public.mockModules.
  */
 import { FeedbackAction, ThesisStatus } from '@thesis/shared';
+import type { FeedbackStatus } from '@thesis/shared';
 import type { FeedbackChapter } from '@thesis/shared';
 import type {
   AppNotification,
@@ -86,6 +87,8 @@ export const thesesApi = {
   },
   manuscriptPath: (id: string, fileId: string) => `/theses/${id}/manuscripts/${fileId}`,
   graph: (id: string) => request<GraphView>(`/theses/${id}/graph`),
+  /** Coordinator: REVISIONS_IN_PROGRESS → READY_FOR_DEFENSE once no feedback is unresolved. */
+  readyForDefense: (id: string) => request<unknown>(`/theses/${id}/ready-for-defense`, { method: 'POST' }),
 };
 
 export const assignmentsApi = {
@@ -162,6 +165,11 @@ export const feedbackApi = {
     isMocked('feedback')
       ? mockFeedback.act(id, action, content, actor)
       : request(`/feedback/${id}/${FEEDBACK_ROUTE[action]}`, { method: 'POST', body: content ? { content } : {} }),
+};
+
+export const feedbackSummaryApi = {
+  get: (thesisId: string) =>
+    request<{ total: number; byStatus: Record<FeedbackStatus, number> }>(`/theses/${thesisId}/feedback/summary`),
 };
 
 export const disputesApi = {

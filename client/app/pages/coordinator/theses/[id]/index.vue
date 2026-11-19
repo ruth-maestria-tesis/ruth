@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { AssignmentStatus, Role } from '@thesis/shared';
+import { AssignmentStatus, FeedbackStatus, Role, ThesisStatus } from '@thesis/shared';
 import type { Assignment, ExternalLink } from '~/types/api';
-import { assignmentsApi, thesesApi } from '~/utils/api';
+import { assignmentsApi, feedbackSummaryApi, thesesApi } from '~/utils/api';
 import { downloadFile } from '~/utils/http';
 import { formatDate, fullName } from '~/utils/i18n';
 import { useAuthStore } from '~/stores/auth';
@@ -33,8 +33,35 @@ async function loadAssignments() {
     ui.error(e);
   }
 }
+/** Unresolved feedback (PENDING + ADDRESSED); only loaded while the thesis is in revisions. */
+const unresolved = ref<number | null>(null);
+const markingReady = ref(false);
+const inRevisions = computed(() => thesis.value?.status === ThesisStatus.REVISIONS_IN_PROGRESS);
+async function loadFeedbackSummary() {
+  if (!inRevisions.value) return;
+  try {
+    const s = await feedbackSummaryApi.get(id.value);
+    unresolved.value = (s.byStatus[FeedbackStatus.PENDING] ?? 0) + (s.byStatus[FeedbackStatus.ADDRESSED] ?? 0);
+  } catch (e) {
+    ui.error(e);
+  }
+}
+async function markReady() {
+  markingReady.value = true;
+  try {
+    await thesesApi.readyForDefense(id.value);
+    ui.notify('La tesis quedó lista para sustentación.');
+    await reload();
+  } catch (e) {
+    ui.error(e);
+    await loadFeedbackSummary();
+  } finally {
+    markingReady.value = false;
+  }
+}
 async function reload() {
   await Promise.all([load(), loadAssignments()]);
+  await loadFeedbackSummary();
 }
 onMounted(async () => {
   await reload();
@@ -95,6 +122,18 @@ const isExternalJuror = (a: Assignment) => a.juror?.roles.includes(Role.EXTERNAL
     <v-alert v-else-if="error" type="error" variant="tonal">No se encontró la tesis o no tiene permiso para verla.</v-alert>
     <template v-if="thesis && summary">
       <ThesisHeader :thesis="summary" />
+      <v-alert v-if="canManage && inRevisions && unresolved !== null" :type="unresolved === 0 ? 'success' : 'info'" variant="tonal" class="mb-4">
+        <div class="d-flex flex-wrap align-center ga-3">
+          <div class="flex-grow-1">
+            <template v-if="unresolved === 0">Todas las observaciones están subsanadas. Puede habilitar la tesis para sustentación.</template>
+            <template v-else>Quedan {{ unresolved }} observaciones sin subsanar (RN-06).</template>
+          </div>
+          <v-btn v-if="unresolved === 0" color="primary" variant="flat" prepend-icon="mdi-check-decagram" :loading="markingReady" @click="markReady">
+            Marcar lista para sustentación
+          </v-btn>
+          <v-btn v-else variant="text" :to="`/coordinator/theses/${thesis.id}/feedback`">Ver observaciones</v-btn>
+        </div>
+      </v-alert>
       <v-row>
         <v-col cols="12" lg="7">
           <v-card class="pa-4 mb-4">
