@@ -8,6 +8,8 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AssignmentsModule } from './assignments/assignments.module';
 import { AuthModule } from './auth/auth.module';
 import { CatalogsModule } from './catalogs/catalogs.module';
+import { EvaluationsModule } from './evaluations/evaluations.module';
+import { FeedbackModule } from './feedback/feedback.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { envValidationSchema } from './config/env.validation';
@@ -46,6 +48,8 @@ import { WorkflowModule } from './workflow/workflow.module';
     SettingsModule,
     ThesesModule,
     AssignmentsModule,
+    FeedbackModule,
+    EvaluationsModule,
   ],
   controllers: [HealthController],
   providers: [

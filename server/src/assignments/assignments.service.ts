@@ -41,6 +41,7 @@ import {
 import { JurorInputDto } from './dto/juror-input.dto';
 import { ReplaceAssignmentDto } from './dto/replace-assignment.dto';
 import { QueryMyAssignmentsDto } from './dto/respond.dto';
+import { AssignTiebreakerDto } from './dto/tiebreaker.dto';
 import { externalAccessUrl, newExternalToken } from './external-token';
 import {
   CandidateUser,
@@ -579,6 +580,70 @@ export class AssignmentsService {
     }
   }
 
+  // ---------------------------------------------------------------- CU-05 tiebreaker
+
+  /**
+   * CU-05: slot 3, TIEBREAKER, PENDING on an IN_DISPUTE thesis. RN-01 applies, and the juror
+   * history rule keeps out the primary jurors (and earlier tiebreakers). The thesis status
+   * does not change; a decline or expiry leaves it IN_DISPUTE for another designation.
+   */
+  async assignTiebreaker(
+    thesisId: string,
+    dto: AssignTiebreakerDto,
+    actor: Actor,
+  ): Promise<{ assignment: AssignmentView; externalLink?: ExternalLink }> {
+    const thesis = await this.theses.findById(thesisId);
+    if (thesis.status !== ThesisStatus.IN_DISPUTE)
+      throw thesisStatusError(thesis.status);
+    const active = await this.model
+      .exists({
+        thesisId: thesis._id,
+        type: AssignmentType.TIEBREAKER,
+        isActive: true,
+      })
+      .exec();
+    if (active) throw assignmentConflict();
+    const input: JurorInputDto = {
+      jurorId: dto.jurorId,
+      newExternal: dto.newExternal,
+    };
+    const candidates = await this.resolveCandidates([input], () => 3);
+    const { previousJurorIds } = await this.juryHistory(thesis._id);
+    this.assertValid(
+      validateJury({
+        candidates,
+        parties: partiesOf(thesis),
+        previousJurorIds,
+        required: 1,
+        requireUnicordoba: false,
+      }),
+    );
+    const settings = await this.settings.get();
+    // The partial unique (thesisId, slot) index turns a concurrent second designation into 409.
+    const { docs } = await this.persist(
+      thesis._id,
+      [{ slot: 3, input }],
+      dto.responseBusinessDays ?? settings.acceptanceBusinessDays,
+      new Set(settings.holidays),
+      actor,
+      undefined,
+      AssignmentType.TIEBREAKER,
+    );
+    const [doc] = docs;
+    this.emit(ASSIGNMENT_EVENTS.CREATED, doc, actor);
+    let link: ExternalLink | undefined;
+    try {
+      [link] = await this.linksForExternalJurors([doc]);
+    } catch (err) {
+      this.logger.error(
+        `Tiebreaker ${doc.id as string} was created but its external link could not be generated`,
+        err instanceof Error ? err.stack : String(err),
+      );
+    }
+    const [view] = await this.views([doc], { withJuror: true });
+    return { assignment: view, externalLink: link };
+  }
+
   // ---------------------------------------------------------------- CU-08 lists
 
   /** The juror's own assignments (a scoped session only sees its scope), newest first. */
@@ -768,6 +833,7 @@ export class AssignmentsService {
     actor: Actor,
     /** Pre-generated id for a single-slot insert (replacement marks the old assignment first). */
     firstId?: Types.ObjectId,
+    type: AssignmentType = AssignmentType.PRIMARY,
   ): Promise<{ docs: AssignmentDocument[]; created: Created }> {
     // `new Types.ObjectId(undefined)` would silently record a random assigner.
     if (!actor.id) throw new Error('Assigning jurors requires an actor id');
@@ -796,7 +862,7 @@ export class AssignmentsService {
           _id: created.assignmentIds[i],
           thesisId,
           jurorId: new Types.ObjectId(jurorIds[i]),
-          type: AssignmentType.PRIMARY,
+          type,
           slot,
           status: AssignmentStatus.PENDING,
           isActive: true,

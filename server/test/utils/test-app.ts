@@ -4,6 +4,7 @@ import { JwtService } from '@nestjs/jwt';
 import { getConnectionToken } from '@nestjs/mongoose';
 import { Test } from '@nestjs/testing';
 import {
+  EvaluationVerdict,
   isExternalOnly,
   JUROR_ROLES,
   PeriodTerm,
@@ -16,8 +17,11 @@ import request from 'supertest';
 import type { App } from 'supertest/types';
 import { AppModule } from '../../src/app.module';
 import { configureApp } from '../../src/app.setup';
+import { AssignmentResponsesService } from '../../src/assignments/assignment-responses.service';
 import { AssignmentsService } from '../../src/assignments/assignments.service';
 import { CatalogsService } from '../../src/catalogs/catalogs.service';
+import type { AuthUser } from '../../src/common/types/auth-user';
+import { EvaluationsService } from '../../src/evaluations/evaluations.service';
 import { ThesisDocument } from '../../src/theses/schemas/thesis.schema';
 import { ThesesService } from '../../src/theses/theses.service';
 import { CreateUserDto } from '../../src/users/dto/create-user.dto';
@@ -221,6 +225,92 @@ export function assignJury(
       { jurors: jurorIds.map((jurorId) => ({ jurorId })) },
       { id: FIXTURE_COORDINATOR.id, role: Role.COORDINATOR },
     );
+}
+
+/** The AuthUser a service call acts as (no scope). */
+export const asAuthUser = (u: UserDocument): AuthUser => ({
+  id: u.id as string,
+  email: u.email,
+  roles: u.roles,
+});
+
+export interface ThesisUnderEvaluation {
+  thesis: ThesisDocument;
+  student: UserDocument;
+  /** Slot 1 and slot 2 primary jurors (internal, Universidad de Córdoba). */
+  jurors: [UserDocument, UserDocument];
+  /** Their ACCEPTED assignments, same order. */
+  assignmentIds: [string, string];
+}
+
+/**
+ * A thesis in UNDER_EVALUATION: CU-01 with two fresh internal jurors, both accept (CU-08).
+ * The student and jurors have TEST_PASSWORD, so `loginAgent(app, x.email)` works.
+ */
+export async function createThesisUnderEvaluation(
+  app: INestApplication,
+  catalog?: CatalogFixture,
+): Promise<ThesisUnderEvaluation> {
+  const student = await createUser(app, { roles: [Role.STUDENT] });
+  const jurors: [UserDocument, UserDocument] = [
+    await createUser(app, { roles: [Role.INTERNAL_JUROR] }),
+    await createUser(app, { roles: [Role.INTERNAL_JUROR] }),
+  ];
+  const created = await createAssignableThesis(app, catalog, {
+    studentId: student.id as string,
+  });
+  const { assignments } = await assignJury(
+    app,
+    created.id as string,
+    jurors.map((j) => j.id as string),
+  );
+  const responses = app.get(AssignmentResponsesService);
+  for (const [i, a] of assignments.entries())
+    await responses.accept(a.id, asAuthUser(jurors[i]));
+  const thesis = await app.get(ThesesService).findById(created.id as string);
+  return {
+    thesis,
+    student,
+    jurors,
+    assignmentIds: [assignments[0].id, assignments[1].id],
+  };
+}
+
+/** CU-02 submit through the service with a full rubric and valid comments (runs RN-08). */
+export function submitEvaluation(
+  app: INestApplication,
+  assignmentId: string,
+  juror: UserDocument,
+  verdict: EvaluationVerdict,
+) {
+  return app.get(EvaluationsService).submit(
+    assignmentId,
+    {
+      rubric: { methodology: 4, relevance: 5, writingQuality: 4 },
+      verdict,
+      comments: 'Concepto de prueba con comentarios suficientes.',
+    },
+    asAuthUser(juror),
+  );
+}
+
+/** A thesis in READY_FOR_DEFENSE: both primaries submitted APPROVED_FOR_DEFENSE, no feedback. */
+export async function createThesisReadyForDefense(
+  app: INestApplication,
+  catalog?: CatalogFixture,
+): Promise<ThesisUnderEvaluation> {
+  const fx = await createThesisUnderEvaluation(app, catalog);
+  for (const i of [0, 1] as const)
+    await submitEvaluation(
+      app,
+      fx.assignmentIds[i],
+      fx.jurors[i],
+      EvaluationVerdict.APPROVED_FOR_DEFENSE,
+    );
+  return {
+    ...fx,
+    thesis: await app.get(ThesesService).findById(fx.thesis.id as string),
+  };
 }
 
 /** supertest parser that collects binary responses into a Buffer. */
