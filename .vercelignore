@@ -1,0 +1,19 @@
+# Never upload secrets
+.env
+.env.*
+**/.env
+**/.env.*
+!**/.env.example
+# Local-only / heavy
+node_modules
+**/node_modules
+.claude
+.vercel
+documentacion
+documentacion 2
+dds3
+docs/informe-recuperacion-2026-11-18.md
+**/dist
+**/.output
+**/.nuxt
+**/coverage
