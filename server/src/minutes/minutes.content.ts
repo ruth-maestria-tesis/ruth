@@ -50,3 +50,13 @@ export function formatMinutesNumber(
 ): string {
   return `${programCode}-${year}-${String(seq).padStart(3, '0')}`;
 }
+
+/** Calendar year in Colombia, so the number never depends on the server's time zone. */
+export function bogotaYear(date: Date = new Date()): number {
+  return Number(
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Bogota',
+      year: 'numeric',
+    }).format(date),
+  );
+}

@@ -54,6 +54,8 @@ export interface SeedOptions {
   tag?: string;
   /** Delete the tagged documents first. */
   reset?: boolean;
+  /** Allow running with NODE_ENV=production. */
+  force?: boolean;
   log?: (message: string) => void;
 }
 
@@ -129,7 +131,21 @@ const bucketOf = (app: INestApplicationContext) =>
     bucketName: BUCKET,
   });
 
-/** Deletes every document tagged `tag` (and the counters/files the seed wrote). */
+/** Distinct ObjectIds found in `field` of documents of `model` matching `filter`. */
+async function referenced(
+  model: Model<any>,
+  field: string,
+  filter: Record<string, unknown>,
+): Promise<string[]> {
+  const ids = (await model.distinct(field, filter).exec()) as unknown[];
+  return ids.filter(Boolean).map(String);
+}
+
+/**
+ * Deletes the documents tagged `tag` (and the counters/files the seed wrote). The shared catalogs
+ * (program, periods) are never tagged, so they are never deleted. A tagged thesis, user or cohort
+ * that untagged documents still reference is kept.
+ */
 export async function resetSeed(
   app: INestApplicationContext,
   rawTag?: string,
@@ -137,6 +153,7 @@ export async function resetSeed(
   const tag = normalizeSeedTag(rawTag);
   const m = models(app);
   const removed: Record<string, number> = {};
+  const oid = (ids: string[]) => ids.map((i) => new Types.ObjectId(i));
 
   // Notifications written by listeners after the seed finished are tagged here first.
   const userIds = (
@@ -147,51 +164,120 @@ export async function resetSeed(
       .updateMany({ userId: { $in: userIds } }, { $set: { seedTag: tag } })
       .exec();
 
+  // Theses that someone outside the seed has attached documents to stay (with their children).
+  const taggedTheses = (
+    await m.theses.find({ seedTag: tag }, { _id: 1 }).lean().exec()
+  ).map((t) => t._id);
+  const untagged = { seedTag: { $ne: tag } };
+  const blocked = new Set<string>();
+  for (const model of [
+    m.assignments,
+    m.evaluations,
+    m.feedback,
+    m.defenses,
+    m.minutes,
+  ] as Model<any>[])
+    for (const id of await referenced(model, 'thesisId', {
+      thesisId: { $in: taggedTheses },
+      ...untagged,
+    }))
+      blocked.add(id);
   const bucket = bucketOf(app);
-  const files = await bucket.find({ 'metadata.seedTag': tag }).toArray();
+  const outsideFiles = await bucket
+    .find({
+      'metadata.thesisId': { $in: taggedTheses },
+      'metadata.seedTag': { $ne: tag },
+    })
+    .toArray();
+  for (const f of outsideFiles)
+    blocked.add(String((f.metadata as { thesisId: Types.ObjectId }).thesisId));
+  const keepTheses = oid([...blocked]);
+
+  const files = await bucket
+    .find({
+      'metadata.seedTag': tag,
+      'metadata.thesisId': { $nin: keepTheses },
+    })
+    .toArray();
   for (const f of files) await bucket.delete(f._id);
   removed.files = files.length;
 
-  const ordered: [string, Model<any>][] = [
-    ['notifications', m.notifications],
+  removed.notifications = (
+    await m.notifications.deleteMany({ seedTag: tag }).exec()
+  ).deletedCount;
+  for (const [name, model] of [
     ['minutes', m.minutes],
     ['defenses', m.defenses],
     ['feedbackItems', m.feedback],
     ['evaluations', m.evaluations],
     ['assignments', m.assignments],
-    ['theses', m.theses],
-    ['cohorts', m.cohorts],
-    ['periods', m.periods],
-    ['programs', m.programs],
-    ['users', m.users],
-  ];
-  for (const [name, model] of ordered)
+  ] as [string, Model<any>][])
     removed[name] = (
-      await model.deleteMany({ seedTag: tag }).exec()
+      await model
+        .deleteMany({ seedTag: tag, thesisId: { $nin: keepTheses } })
+        .exec()
     ).deletedCount;
-
-  // Thesis code counters carry the tag in their prefix (thesis:DEMO-MIETIA-2026-I).
-  let counters = (
-    await m.counters
-      .deleteMany({ _id: new RegExp(`^thesis:${escapeRegex(tag)}-`) })
+  removed.theses = (
+    await m.theses
+      .deleteMany({ seedTag: tag, _id: { $nin: keepTheses } })
       .exec()
   ).deletedCount;
-  // Minutes numbers are shared with real data: drop a counter only once nothing uses it.
-  const minuteCounters = await m.counters
-    .find({ _id: /^minutes:/ })
-    .lean()
-    .exec();
-  for (const c of minuteCounters) {
-    const prefix = c._id.slice('minutes:'.length);
-    const inUse = await m.minutes
-      .exists({ number: new RegExp(`^${escapeRegex(prefix)}-`) })
-      .exec();
-    if (!inUse) {
-      await m.counters.deleteOne({ _id: c._id }).exec();
-      counters += 1;
-    }
-  }
-  removed.counters = counters;
+
+  // Users still referenced by remaining documents stay.
+  const userRefs: [Model<any>, string][] = [
+    [m.theses, 'studentId'],
+    [m.theses, 'advisorId'],
+    [m.theses, 'coAdvisorIds'],
+    [m.assignments, 'jurorId'],
+    [m.assignments, 'assignedBy'],
+    [m.evaluations, 'jurorId'],
+    [m.feedback, 'jurorId'],
+    [m.feedback, 'authorId'],
+    [m.defenses, 'createdBy'],
+    [m.minutes, 'createdBy'],
+    [m.minutes, 'requiredSigners.userId'],
+  ];
+  const keepUsers = new Set<string>();
+  for (const [model, field] of userRefs)
+    for (const id of await referenced(model, field, {
+      [field]: { $in: userIds },
+    }))
+      keepUsers.add(id);
+  removed.users = (
+    await m.users
+      .deleteMany({ seedTag: tag, _id: { $nin: oid([...keepUsers]) } })
+      .exec()
+  ).deletedCount;
+
+  // Cohorts still used by remaining theses or users stay.
+  const cohortIds = (
+    await m.cohorts.find({ seedTag: tag }, { _id: 1 }).lean().exec()
+  ).map((c) => c._id);
+  const keepCohorts = new Set<string>([
+    ...(await referenced(m.theses, 'cohortId', {
+      cohortId: { $in: cohortIds },
+    })),
+    ...(await referenced(m.users, 'studentProfile.cohortId', {
+      'studentProfile.cohortId': { $in: cohortIds },
+    })),
+  ]);
+  removed.cohorts = (
+    await m.cohorts
+      .deleteMany({ seedTag: tag, _id: { $nin: oid([...keepCohorts]) } })
+      .exec()
+  ).deletedCount;
+
+  // Thesis codes and minutes numbers of the seed carry the tag in their counter key
+  // (thesis:DEMO-MIETIA-2026-I, minutes:DEMO-MIETIA-2026). Keep them while kept theses exist.
+  removed.counters = keepTheses.length
+    ? 0
+    : (
+        await m.counters
+          .deleteMany({
+            _id: new RegExp(`^(thesis|minutes):${escapeRegex(tag)}-`),
+          })
+          .exec()
+      ).deletedCount;
   return removed;
 }
 
@@ -226,12 +312,68 @@ export async function runSeed(
 ): Promise<SeedResult> {
   const tag = normalizeSeedTag(opts.tag);
   const log = opts.log ?? (() => undefined);
+  if (process.env.NODE_ENV === 'production' && !opts.force)
+    throw new Error(
+      'Refusing to seed with NODE_ENV=production; pass --force to override',
+    );
   const m = models(app);
   if (opts.reset) {
     const removed = await resetSeed(app, tag);
     log(`Reset ${tag}: ${JSON.stringify(removed)}`);
   }
+  const createdUserIds: Types.ObjectId[] = [];
+  const thesisIds: Types.ObjectId[] = [];
+  try {
+    return await buildSeed(app, tag, log, m, createdUserIds, thesisIds);
+  } finally {
+    // Also runs when the seed fails partway, so `--reset` can always remove what was written.
+    try {
+      await tagSeeded(app, tag, m, createdUserIds, thesisIds);
+    } catch (e) {
+      log(`Could not tag seeded documents: ${String(e)}`);
+    }
+  }
+}
 
+/** Tags the documents the services created on the seed's behalf (children of seeded theses...). */
+async function tagSeeded(
+  app: INestApplicationContext,
+  tag: string,
+  m: Models,
+  userIds: Types.ObjectId[],
+  thesisIds: Types.ObjectId[],
+): Promise<void> {
+  await settleNotifications(m);
+  const byThesis = { thesisId: { $in: thesisIds } };
+  const $set = { $set: { seedTag: tag } };
+  await m.users.updateMany({ _id: { $in: userIds } }, $set).exec();
+  await m.theses.updateMany({ _id: { $in: thesisIds } }, $set).exec();
+  for (const model of [
+    m.assignments,
+    m.evaluations,
+    m.feedback,
+    m.defenses,
+    m.minutes,
+  ] as Model<any>[])
+    await model.updateMany(byThesis, $set).exec();
+  await m.notifications.updateMany({ userId: { $in: userIds } }, $set).exec();
+  await app
+    .get<Connection>(getConnectionToken())
+    .db!.collection(`${BUCKET}.files`)
+    .updateMany(
+      { 'metadata.thesisId': { $in: thesisIds } },
+      { $set: { 'metadata.seedTag': tag } },
+    );
+}
+
+async function buildSeed(
+  app: INestApplicationContext,
+  tag: string,
+  log: (message: string) => void,
+  m: Models,
+  createdUserIds: Types.ObjectId[],
+  thesisIds: Types.ObjectId[],
+): Promise<SeedResult> {
   const users = app.get(UsersService);
   const catalogs = app.get(CatalogsService);
   const theses = app.get(ThesesService);
@@ -269,10 +411,12 @@ export async function runSeed(
   // ------------------------------------------------------------ catalogs
   const program =
     (await m.programs.findOne({ code: PROGRAM.code }).exec()) ??
-    (await catalogs.createProgram(
-      { code: PROGRAM.code, name: PROGRAM.name, level: ProgramLevel.MASTER },
-      tag,
-    ));
+    // Shared catalogs are never tagged: a reset must not delete them.
+    (await catalogs.createProgram({
+      code: PROGRAM.code,
+      name: PROGRAM.name,
+      level: ProgramLevel.MASTER,
+    }));
   const period = async (
     year: number,
     term: PeriodTerm,
@@ -280,7 +424,7 @@ export async function runSeed(
     endsAt: string,
   ) =>
     (await m.periods.findOne({ code: `${year}-${term}` }).exec()) ??
-    (await catalogs.createPeriod({ year, term, startsAt, endsAt }, tag));
+    (await catalogs.createPeriod({ year, term, startsAt, endsAt }));
   const p2025 = await period(2025, PeriodTerm.II, '2025-07-28', '2025-12-12');
   const p2026 = await period(2026, PeriodTerm.I, '2026-02-02', '2026-06-19');
   const maxCohort =
@@ -312,19 +456,20 @@ export async function runSeed(
   log('Catalogs ready');
 
   // ------------------------------------------------------------ users
-  const createdUserIds: Types.ObjectId[] = [];
-  const track = (u: UserDocument) => {
+  // Tag each user right after creating it, so a seed that fails partway is fully removable.
+  const track = async (u: UserDocument) => {
     createdUserIds.push(u._id);
+    await m.users.updateOne({ _id: u._id }, { $set: { seedTag: tag } }).exec();
     return u;
   };
-  track(
+  await track(
     await users.create({
       ...ADMIN,
       password: PASSWORDS.admin,
       roles: [Role.ADMIN],
     }),
   );
-  const coordinator = track(
+  const coordinator = await track(
     await users.create({
       ...COORDINATOR,
       password: PASSWORDS.coordinator,
@@ -334,7 +479,7 @@ export async function runSeed(
   const J: UserDocument[] = [];
   for (const [i, j] of INTERNAL_JURORS.entries())
     J.push(
-      track(
+      await track(
         await users.create({
           email: jurorEmails[i],
           password: PASSWORDS.juror,
@@ -354,12 +499,12 @@ export async function runSeed(
     );
   const E: UserDocument[] = [];
   for (const e of EXTERNAL_JURORS)
-    E.push(track(await users.createExternalJuror(e)));
+    E.push(await track(await users.createExternalJuror(e)));
   const S: UserDocument[] = [];
   for (const [i, s] of STUDENTS.entries()) {
     const cohort = i < 8 ? cohort1 : cohort2;
     S.push(
-      track(
+      await track(
         await users.create({
           email: studentEmails[i],
           password: PASSWORDS.student,
@@ -376,9 +521,6 @@ export async function runSeed(
       ),
     );
   }
-  await m.users
-    .updateMany({ _id: { $in: createdUserIds } }, { $set: { seedTag: tag } })
-    .exec();
   log(`Users ready (${createdUserIds.length})`);
 
   // ------------------------------------------------------------ helpers
@@ -388,7 +530,6 @@ export async function runSeed(
     role: Role.COORDINATOR,
   };
   const seeded: SeededThesis[] = [];
-  const thesisIds: Types.ObjectId[] = [];
 
   const register = async (i: number, advisor: UserDocument) => {
     const topic = TOPICS[i];
@@ -510,10 +651,19 @@ export async function runSeed(
       defense.id,
       defense.jurors.map((j) => j.userId),
     );
+    // The defense took place before the minutes: move its date to the past (seed-only path;
+    // the public API still requires a future date).
+    await m.defenses
+      .updateOne(
+        { _id: defense.id },
+        { $set: { scheduledAt: new Date(Date.now() - 7 * DAY) } },
+      )
+      .exec();
     const draft = await minutes.create(
       t.id as string,
       { finalGrade: grade, verdict, remarks },
       coordAuth,
+      { numberPrefix: tag },
     );
     const ctx = { ip: '127.0.0.1', userAgent: 'seed' };
     for (const s of draft.requiredSigners.filter(
@@ -521,13 +671,6 @@ export async function runSeed(
     ))
       await minutes.sign(draft.id, auth(byId.get(s.userId)!), ctx);
     await minutes.sign(draft.id, coordAuth, ctx);
-    // The defense took place before the minutes: move its date to the past (demo only).
-    await m.defenses
-      .updateOne(
-        { _id: defense.id },
-        { $set: { scheduledAt: new Date(Date.now() - 7 * DAY) } },
-      )
-      .exec();
   };
   const done = async (t: ThesisDocument, note?: string) => {
     const fresh = await theses.findById(t.id as string);
@@ -904,29 +1047,6 @@ export async function runSeed(
     );
     await done(t, 'acta sellada (reprobada)');
   }
-
-  // ------------------------------------------------------------ tag the rest
-  await settleNotifications(m);
-  const byThesis = { thesisId: { $in: thesisIds } };
-  const $set = { $set: { seedTag: tag } };
-  for (const model of [
-    m.assignments,
-    m.evaluations,
-    m.feedback,
-    m.defenses,
-    m.minutes,
-  ] as Model<any>[])
-    await model.updateMany(byThesis, $set).exec();
-  await m.notifications
-    .updateMany({ userId: { $in: createdUserIds } }, $set)
-    .exec();
-  await app
-    .get<Connection>(getConnectionToken())
-    .db!.collection(`${BUCKET}.files`)
-    .updateMany(
-      { 'metadata.thesisId': { $in: thesisIds } },
-      { $set: { 'metadata.seedTag': tag } },
-    );
 
   return {
     tag,

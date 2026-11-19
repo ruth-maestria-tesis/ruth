@@ -24,6 +24,7 @@ import { UsersService } from '../users/users.service';
 import { WorkflowService } from '../workflow/workflow.service';
 import { CreateMinutesDto, UpdateMinutesDto } from './dto/minutes.dto';
 import {
+  bogotaYear,
   formatMinutesNumber,
   isGradeConsistent,
   minutesHash,
@@ -48,6 +49,11 @@ export interface MinutesView {
   pdfAvailable: boolean;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface CreateMinutesOptions {
+  /** Seed only: prefixes the number and its counter so demo data never uses the official sequence. */
+  numberPrefix?: string;
 }
 
 export interface SignContext {
@@ -87,6 +93,7 @@ export class MinutesService {
     thesisId: string,
     dto: CreateMinutesDto,
     user: AuthUser,
+    opts: CreateMinutesOptions = {},
   ): Promise<MinutesView> {
     const thesis = await this.theses.findById(thesisId);
     if (thesis.status !== ThesisStatus.DEFENSE_SCHEDULED) {
@@ -108,11 +115,20 @@ export class MinutesService {
       );
     }
 
-    const number = await this.nextNumber(thesis);
     const jurors = await this.defenses.activeJurors(thesis._id);
     const jurorUsers = await this.users.findManyByIds(
       jurors.map((j) => j.userId),
     );
+    const found = new Set(jurorUsers.map((u) => u.id as string));
+    const missing = jurors.filter((j) => !found.has(j.userId));
+    if (missing.length) {
+      throw err(
+        ErrorCode.INTERNAL_ERROR,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+        `Required signer accounts not found: ${missing.map((j) => j.userId).join(', ')}`,
+      );
+    }
+    const number = await this.nextNumber(thesis, opts.numberPrefix);
     const requiredSigners = [
       ...jurorUsers.map((u) => ({
         userId: u._id,
@@ -207,7 +223,6 @@ export class MinutesService {
     ctx: SignContext,
   ): Promise<MinutesView> {
     const { minutes, thesis } = await this.findReadable(id, user);
-    this.assertDraft(minutes);
     const signer = minutes.requiredSigners.find((s) =>
       s.userId.equals(user.id),
     );
@@ -218,8 +233,18 @@ export class MinutesService {
         'You are not a required signer of these minutes',
       );
     }
-    if (minutes.signatures.some((s) => s.userId.equals(user.id)))
+    if (minutes.status === MinutesStatus.SEALED) {
+      // Retry: sealed but the thesis transition failed afterwards.
+      if (thesis.status !== ThesisStatus.DEFENSE_SCHEDULED) throw sealed();
+      await this.finalize(minutes, thesis, user);
+      return this.toView(minutes);
+    }
+    if (minutes.signatures.some((s) => s.userId.equals(user.id))) {
+      // Retry: every signature is in but sealing failed afterwards.
+      if (minutes.signatures.length >= minutes.requiredSigners.length)
+        return this.toView(await this.seal(minutes, thesis, user));
       throw this.signed();
+    }
     if (signer.role === Role.COORDINATOR) {
       const jurorsPending = minutes.requiredSigners.some(
         (s) =>
@@ -338,6 +363,16 @@ export class MinutesService {
       await this.files.delete(file.id);
       throw sealed();
     }
+    await this.finalize(sealedDoc, thesis, user);
+    return sealedDoc;
+  }
+
+  /** Completes the thesis and announces the seal; the only step a seal retry repeats. */
+  private async finalize(
+    minutes: MinutesDocument,
+    thesis: ThesisDocument,
+    user: AuthUser,
+  ): Promise<void> {
     const actor = actorFrom(user, Role.COORDINATOR);
     await this.workflow.transition({
       thesisId: thesis.id as string,
@@ -351,21 +386,24 @@ export class MinutesService {
     });
     const event: MinutesSealedEvent = {
       thesisId: thesis.id as string,
-      minutesId: sealedDoc.id as string,
-      verdict: sealedDoc.verdict,
+      minutesId: minutes.id as string,
+      verdict: minutes.verdict,
       actor,
     };
     this.events.emit(MINUTES_SEALED, event);
-    return sealedDoc;
   }
 
   /** Atomic per program code and year: MIETIA-2026-001. */
-  private async nextNumber(thesis: ThesisDocument): Promise<string> {
+  private async nextNumber(
+    thesis: ThesisDocument,
+    prefix?: string,
+  ): Promise<string> {
     const program = await this.catalogs.findProgram(
       thesis.programId.toHexString(),
     );
-    const code = program?.code ?? 'PROG';
-    const year = new Date().getFullYear();
+    const base = program?.code ?? 'PROG';
+    const code = prefix ? `${prefix}-${base}` : base;
+    const year = bogotaYear();
     const counter = await this.counters.findOneAndUpdate(
       { _id: `minutes:${code}-${year}` },
       { $inc: { seq: 1 } },
