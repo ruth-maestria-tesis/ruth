@@ -2668,7 +2668,7 @@ Add to `AssignmentsService` (imports: `ReplaceAssignmentDto`, `isWorkflowRace` f
       validateJury({
         candidates,
         parties: partiesOf(thesis),
-        previousJurorIds: await this.previousJurorIds(thesis._id),
+        previousJurorIds: (await this.juryHistory(thesis._id)).previousJurorIds,
         required: candidates.length,
         requireUnicordoba: candidates.length === 2,
       }),

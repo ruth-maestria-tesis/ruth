@@ -2,11 +2,13 @@ import { INestApplication } from '@nestjs/common';
 import { getModelToken } from '@nestjs/mongoose';
 import { AssignmentStatus, Role, ThesisStatus } from '@thesis/shared';
 import { Model, Types } from 'mongoose';
+import { ORPHAN_ASSIGNMENT_GRACE_MS } from '../src/assignments/assignments.service';
 import { Assignment } from '../src/assignments/schemas/assignment.schema';
 import { SettingsService } from '../src/settings/settings.service';
 import { ThesesService } from '../src/theses/theses.service';
 import { User, UserDocument } from '../src/users/schemas/user.schema';
 import { UsersService } from '../src/users/users.service';
+import { WorkflowService } from '../src/workflow/workflow.service';
 import {
   CatalogFixture,
   closeTestApp,
@@ -421,7 +423,169 @@ describe('Assignments — CU-01 (e2e)', () => {
     expect(await assignments.countDocuments({ thesisId: thesis._id })).toBe(0);
   });
 
+  it('a failed transition undoes the jury and the inline user; thesis stays SUBMITTED', async () => {
+    const thesis = await createAssignableThesis(app, catalog);
+    const spy = jest
+      .spyOn(app.get(WorkflowService), 'transition')
+      .mockRejectedValueOnce(new Error('transition failed'));
+    await assign(thesis.id as string, {
+      jurors: [
+        { jurorId: unicor.id },
+        { newExternal: newExt('transition.fail@uni.example.org') },
+      ],
+    }).expect(500);
+    spy.mockRestore();
+    expect(await assignments.countDocuments({ thesisId: thesis._id })).toBe(0);
+    expect(
+      await app
+        .get(UsersService)
+        .findManyByEmails(['transition.fail@uni.example.org']),
+    ).toHaveLength(0);
+    const after = await app.get(ThesesService).findById(thesis.id as string);
+    expect(after.status).toBe(ThesisStatus.SUBMITTED);
+  });
+
+  it('compensation keeps an inline user another assignment already references', async () => {
+    const [thesis, other] = await Promise.all([
+      createAssignableThesis(app, catalog),
+      createAssignableThesis(app, catalog),
+    ]);
+    const email = 'picked.meanwhile@uni.example.org';
+    const users = app.get(UsersService);
+    const spy = jest
+      .spyOn(app.get(WorkflowService), 'transition')
+      .mockImplementationOnce(async () => {
+        // Another request picks the freshly created juror before this one fails.
+        const [user] = await users.findManyByEmails([email]);
+        await assignments.create({
+          thesisId: other._id,
+          jurorId: user._id,
+          slot: 1,
+          status: AssignmentStatus.PENDING,
+          isActive: true,
+          assignedAt: new Date(),
+          assignedBy: new Types.ObjectId(),
+          responseDeadline: new Date(),
+        });
+        throw new Error('transition failed');
+      });
+    await assign(thesis.id as string, {
+      jurors: [{ jurorId: unicor.id }, { newExternal: newExt(email) }],
+    }).expect(500);
+    spy.mockRestore();
+    expect(await assignments.countDocuments({ thesisId: thesis._id })).toBe(0);
+    expect(await users.findManyByEmails([email])).toHaveLength(1);
+  });
+
+  /** Writes active assignments straight to the collection, bypassing timestamps. */
+  async function insertActiveJury(
+    thesisId: Types.ObjectId,
+    jurorIds: Types.ObjectId[],
+    createdAt: Date,
+  ): Promise<Types.ObjectId[]> {
+    const ids = jurorIds.map(() => new Types.ObjectId());
+    await assignments.collection.insertMany(
+      jurorIds.map((jurorId, i) => ({
+        _id: ids[i],
+        thesisId,
+        jurorId,
+        type: 'PRIMARY',
+        slot: i + 1,
+        status: AssignmentStatus.PENDING,
+        isActive: true,
+        assignedAt: createdAt,
+        assignedBy: new Types.ObjectId(),
+        responseDeadline: createdAt,
+        createdAt,
+        updatedAt: createdAt,
+      })),
+    );
+    return ids;
+  }
+
+  it('self-heals a stale orphan jury left by a failed CU-01', async () => {
+    const thesis = await createAssignableThesis(app, catalog);
+    const staleAt = new Date(Date.now() - ORPHAN_ASSIGNMENT_GRACE_MS - 60_000);
+    // An inline external juror created by the failed call, just before its assignments.
+    const inline = await createExternalJuror(app);
+    await app
+      .get<Model<User>>(getModelToken(User.name))
+      .collection.updateOne(
+        { _id: inline._id },
+        { $set: { createdAt: new Date(staleAt.getTime() - 100) } },
+      );
+    const staleIds = await insertActiveJury(
+      thesis._id,
+      [unicor2._id, inline._id],
+      staleAt,
+    );
+
+    const res = await assign(thesis.id as string, {
+      jurors: [{ jurorId: unicor.id }, { jurorId: unicor2.id }],
+    }).expect(201);
+
+    expect(res.body.assignments).toHaveLength(2);
+    expect(await assignments.countDocuments({ _id: { $in: staleIds } })).toBe(
+      0,
+    );
+    const users = app.get(UsersService);
+    expect(await users.findManyByIds([inline.id as string])).toHaveLength(0);
+    expect(await users.findManyByIds([unicor2.id as string])).toHaveLength(1);
+    const after = await app.get(ThesesService).findById(thesis.id as string);
+    expect(after.status).toBe(ThesisStatus.JURORS_ASSIGNED);
+  });
+
+  it('a fresh active jury on a SUBMITTED thesis still yields 409', async () => {
+    const thesis = await createAssignableThesis(app, catalog);
+    const freshIds = await insertActiveJury(
+      thesis._id,
+      [unicor2._id, external._id],
+      new Date(),
+    );
+    const res = await assign(thesis.id as string, {
+      jurors: [{ jurorId: unicor.id }, { jurorId: external.id }],
+    }).expect(409);
+    expect(res.body.code).toBe('ASSIGNMENT_CONFLICT');
+    expect(await assignments.countDocuments({ _id: { $in: freshIds } })).toBe(
+      2,
+    );
+  });
+
+  it('answers 404 for an unknown thesis', async () => {
+    const res = await assign(new Types.ObjectId().toHexString(), {
+      jurors: [{ jurorId: unicor.id }, { jurorId: unicor2.id }],
+    }).expect(404);
+    expect(res.body.code).toBe('THESIS_NOT_FOUND');
+  });
+
+  it('flags a jurorId that does not exist as JUROR_NOT_FOUND', async () => {
+    const thesis = await createAssignableThesis(app, catalog);
+    const res = await assign(thesis.id as string, {
+      jurors: [
+        { jurorId: unicor.id },
+        { jurorId: new Types.ObjectId().toHexString() },
+      ],
+    }).expect(400);
+    expect(res.body.code).toBe('ASSIGNMENT_INVALID_COMPOSITION');
+    expect(res.body.details.violations).toContainEqual({
+      code: 'JUROR_NOT_FOUND',
+      slot: 2,
+    });
+    expect(await assignments.countDocuments({ thesisId: thesis._id })).toBe(0);
+  });
+
   describe('POST /assignments/validate', () => {
+    it('only a coordinator can validate', async () => {
+      const thesis = await createAssignableThesis(app, catalog);
+      await admin
+        .post('/api/assignments/validate')
+        .send({
+          thesisId: thesis.id,
+          jurors: [{ jurorId: unicor.id }, { jurorId: external.id }],
+        })
+        .expect(403);
+    });
+
     it('reports violations without saving and valid=true for a correct jury', async () => {
       const thesis = await createAssignableThesis(app, catalog);
       const bad = await coordinator
@@ -495,6 +659,20 @@ describe('Assignments — CU-01 (e2e)', () => {
       await coordinator
         .get(`/api/theses/${thesis.id as string}/assignments`)
         .expect(200);
+    });
+
+    it('is forbidden to students and jurors', async () => {
+      const thesis = await createAssignableThesis(app, catalog);
+      const student = await loginAgent(
+        app,
+        (await createUser(app, { roles: [Role.STUDENT] })).email,
+      );
+      const juror = await loginAgent(app, unicor.email);
+      for (const agent of [student, juror]) {
+        await agent
+          .get(`/api/theses/${thesis.id as string}/assignments`)
+          .expect(403);
+      }
     });
   });
 });

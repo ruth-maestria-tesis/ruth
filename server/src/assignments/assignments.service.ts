@@ -1,4 +1,4 @@
-import { HttpStatus, Injectable } from '@nestjs/common';
+import { HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectModel } from '@nestjs/mongoose';
@@ -7,7 +7,7 @@ import {
   AssignmentStatus,
   AssignmentType,
   ErrorCode,
-  Role,
+  isExternalOnly,
   ThesisStatus,
 } from '@thesis/shared';
 import { isObjectIdOrHexString, Model, Types } from 'mongoose';
@@ -70,6 +70,16 @@ interface JuryHistory {
   hasActive: boolean;
 }
 
+/**
+ * A SUBMITTED thesis only holds active assignments while a CU-01 is in flight. Older ones are
+ * left over from a call that died between the insert and the transition (or failed to
+ * compensate) and are cleared by the next CU-01.
+ */
+export const ORPHAN_ASSIGNMENT_GRACE_MS = 5 * 60_000;
+
+/** An inline juror is created by the same call, moments before its assignment. */
+const INLINE_JUROR_WINDOW_MS = 60_000;
+
 const duplicateKeyFields = (e: unknown): string[] | undefined => {
   const err = e as { code?: number; keyPattern?: Record<string, unknown> };
   return err?.code === 11000 ? Object.keys(err.keyPattern ?? {}) : undefined;
@@ -128,6 +138,8 @@ const jurorSummary = (u: UserDocument): JurorSummary => ({
 
 @Injectable()
 export class AssignmentsService {
+  private readonly logger = new Logger(AssignmentsService.name);
+
   constructor(
     @InjectModel(Assignment.name) private readonly model: Model<Assignment>,
     private readonly theses: ThesesService,
@@ -173,8 +185,9 @@ export class AssignmentsService {
       );
     }
     const candidates = await this.resolveCandidates(dto.jurors, (i) => i + 1);
-    // A SUBMITTED thesis with active assignments means a concurrent CU-01 got there first;
-    // answering 409 here keeps its jurors from showing up as JUROR_PREVIOUSLY_ASSIGNED.
+    await this.clearOrphanJury(thesis._id);
+    // A SUBMITTED thesis with (recent) active assignments means a concurrent CU-01 got there
+    // first; answering 409 here keeps its jurors from showing up as JUROR_PREVIOUSLY_ASSIGNED.
     const history = await this.juryHistory(thesis._id);
     if (history.hasActive) throw assignmentConflict();
     this.assertValid(
@@ -428,17 +441,92 @@ export class AssignmentsService {
     }
   }
 
-  /** Deletes only what this call created (pre-generated assignment ids, inline users). */
+  /**
+   * Deletes only what this call created (pre-generated assignment ids, inline users). Never
+   * throws, so the original error reaches the caller; a failure is logged and the leftovers
+   * are cleared by the next CU-01 (see clearOrphanJury).
+   */
   private async compensate(created: Created): Promise<void> {
-    await this.model
-      .deleteMany({ _id: { $in: created.assignmentIds } })
-      .exec()
-      .catch(() => undefined);
-    if (created.createdUserIds.length) {
-      await this.users
-        .deleteByIds(created.createdUserIds)
-        .catch(() => undefined);
+    const assignmentIds = created.assignmentIds.map((id) => id.toHexString());
+    try {
+      await this.model
+        .deleteMany({ _id: { $in: created.assignmentIds } })
+        .exec();
+    } catch (err) {
+      // Keep the users too: deleting them would leave the assignments pointing at nothing.
+      this.logger.error(
+        `Compensation failed: assignments [${assignmentIds.join(', ')}] and users [${created.createdUserIds.join(', ')}] were not deleted`,
+        err instanceof Error ? err.stack : String(err),
+      );
+      return;
     }
+    if (!created.createdUserIds.length) return;
+    try {
+      // Another request may have picked an inline user in the meantime; keep it then.
+      const referenced = new Set(
+        (
+          await this.model
+            .distinct('jurorId', {
+              jurorId: {
+                $in: created.createdUserIds.map((id) => new Types.ObjectId(id)),
+              },
+            })
+            .exec()
+        ).map((id) => String(id)),
+      );
+      const unreferenced = created.createdUserIds.filter(
+        (id) => !referenced.has(id),
+      );
+      if (unreferenced.length) await this.users.deleteByIds(unreferenced);
+    } catch (err) {
+      this.logger.error(
+        `Compensation failed: users [${created.createdUserIds.join(', ')}] were not deleted`,
+        err instanceof Error ? err.stack : String(err),
+      );
+    }
+  }
+
+  /**
+   * Removes active assignments a failed CU-01 left on a SUBMITTED thesis (older than
+   * ORPHAN_ASSIGNMENT_GRACE_MS), with the inline external jurors created for them. Recent ones
+   * may belong to a request still in flight: they are kept and the caller answers 409.
+   */
+  private async clearOrphanJury(thesisId: Types.ObjectId): Promise<void> {
+    const rows = await this.model
+      .find({ thesisId, isActive: true }, { jurorId: 1, createdAt: 1 })
+      .lean<
+        { _id: Types.ObjectId; jurorId: Types.ObjectId; createdAt: Date }[]
+      >()
+      .exec();
+    if (!rows.length) return;
+    const cutoff = Date.now() - ORPHAN_ASSIGNMENT_GRACE_MS;
+    if (rows.some((r) => r.createdAt.getTime() > cutoff))
+      throw assignmentConflict();
+
+    const createdAtByJuror = new Map(
+      rows.map((r) => [r.jurorId.toHexString(), r.createdAt.getTime()]),
+    );
+    const jurors = await this.users.findManyByIds([...createdAtByJuror.keys()]);
+    const inlineUserIds = jurors
+      .filter((u) => {
+        const assignedAt = createdAtByJuror.get(u.id as string)!;
+        const userCreatedAt = (
+          u.get('createdAt') as Date | undefined
+        )?.getTime();
+        return (
+          isExternalOnly(u.roles) &&
+          userCreatedAt !== undefined &&
+          userCreatedAt <= assignedAt &&
+          userCreatedAt >= assignedAt - INLINE_JUROR_WINDOW_MS
+        );
+      })
+      .map((u) => u.id as string);
+    const assignmentIds = rows.map((r) => r._id);
+    this.logger.warn(
+      `Clearing orphan jury of thesis ${thesisId.toHexString()}: assignments [${assignmentIds.map((id) => id.toHexString()).join(', ')}], inline users [${inlineUserIds.join(', ')}]`,
+    );
+    // compensate() keeps any inline user another assignment still references.
+    await this.compensate({ assignmentIds, createdUserIds: inlineUserIds });
   }
 
   private async thesisSummaries(
@@ -479,9 +567,7 @@ export class AssignmentsService {
       docs.map((d) => d.jurorId.toHexString()),
     );
     const external = new Set(
-      jurors
-        .filter((u) => u.roles.includes(Role.EXTERNAL_JUROR))
-        .map((u) => u.id as string),
+      jurors.filter((u) => isExternalOnly(u.roles)).map((u) => u.id as string),
     );
     const links: ExternalLink[] = [];
     for (const d of docs) {
