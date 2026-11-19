@@ -77,3 +77,8 @@ pnpm --filter server seed -- --reset --tag=QA # otra etiqueta (se normaliza a ma
 | EXTERNAL_JUROR (3) | `diego.quintero@externo.example.org`, `mariajose.fernandez@externo.example.org`, `ricardo.salazar@externo.example.org` | sin contraseña (enlace externo) |
 
 Programa MIETIA, periodos 2025-II y 2026-I, dos cohortes y 15 tesis (`DEMO-MIETIA-…`) con al menos una en cada estado. Para el portal del jurado, `jurado1` tiene una asignación PENDIENTE por aceptar (tesis 2025-II-003) y otra ACEPTADA en evaluación con un borrador (2025-II-005).
+
+## Reportes y bitácora de auditoría
+
+- `GET /api/reports/theses.xlsx`, `GET /api/reports/theses.pdf` y `GET /api/reports/summary` (COORDINATOR, ADMIN): usan los mismos filtros que `GET /api/theses` (sin paginación, máximo 2000 filas). Excel con `exceljs` y PDF con `pdfkit` (A4 horizontal). Ver sección 11 del contrato de la API.
+- `GET /api/audit-logs` (ADMIN, COORDINATOR): bitácora de solo inserción (`auditLogs`). Un interceptor global registra toda petición POST/PUT/PATCH/DELETE exitosa de un usuario autenticado, más inicio de sesión (éxito y fallo) y cierre de sesión. Nunca guarda cuerpos de petición, solo campos permitidos en `meta`. Ver sección 12.
