@@ -1,52 +1,42 @@
-# Despliegue — Render (API) + Vercel (cliente)
+# Despliegue — Vercel (API y cliente)
 
 ## Arquitectura
 
 ```
-Navegador ──► https://<app>.vercel.app             (cliente Nuxt estático)
-                 │  /api/*  (rewrite en vercel.json)
+Navegador ──► https://<cliente>.vercel.app        (proyecto "ruth": Nuxt estático, raíz del repo)
+                 │  /api/*  (rewrite en vercel.json de la raíz)
                  ▼
-              https://ruth-api.onrender.com/api   (NestJS) ──► MongoDB Atlas
+              https://ruth-api.vercel.app/api   (proyecto "ruth-api": NestJS serverless, carpeta server/) ──► MongoDB Atlas
 ```
 
-Vercel reenvía `/api/*` a Render. Para el navegador, las cookies httpOnly son del **mismo sitio** (el dominio de Vercel), así que basta con `COOKIE_SAME_SITE=lax` y ningún navegador las bloquea como cookies de terceros.
+El cliente reenvía `/api/*` al proyecto de la API. Para el navegador, las cookies httpOnly son del **mismo sitio** (el dominio del cliente), así que basta con `COOKIE_SAME_SITE=lax`.
 
-## 1. MongoDB Atlas
+## Proyecto `ruth-api`
 
-En **Network Access**, permita `0.0.0.0/0`, porque el plan gratuito de Render no tiene IP fija.
+- **Root Directory:** `server`. Su configuración está en `server/vercel.json`.
+- **Función:** `server/api/index.js` envuelve `dist/serverless.js`, que arranca Nest una vez por instancia y la reutiliza.
+- **Tareas programadas:** en Vercel no hay temporizadores en proceso. Vercel Cron llama a `GET /api/admin/jobs/cron` a diario a las 12:00 UTC (07:00 en Bogotá), con `Authorization: Bearer $CRON_SECRET`. Esa llamada ejecuta todos los trabajos.
+- **Variables:**
 
-Base de datos: puede usar la misma URI de `server/.env`, que ya tiene el seed `DEMO`, o crear otra base para producción.
+| Variable | Valor |
+|---|---|
+| `MONGODB_URI` | Cadena de Atlas (la escribe el usuario) |
+| `NODE_ENV` | `production` |
+| `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` | 48 bytes aleatorios cada uno, distintos |
+| `CRON_SECRET` | Aleatorio |
+| `CLIENT_URL` | URL del proyecto cliente (se usa en CORS y en los enlaces de jurado externo) |
+| `TRUST_PROXY` | `true` |
+| `COOKIE_SAME_SITE` | `lax` |
 
-## 2. API en Render
+En **Atlas → Network Access** debe permitir `0.0.0.0/0`, porque Vercel no tiene IP fija.
 
-1. Cree una cuenta en render.com y conecte GitHub con acceso al repositorio `ruth`.
-2. **New → Blueprint** y elija el repositorio: Render lee `render.yaml` y crea el servicio `ruth-api`.
-3. Render pide dos variables:
-   - `MONGODB_URI`: su cadena de Atlas (péguela usted, nunca se versiona).
-   - `CLIENT_URL`: la URL final de Vercel (paso 3). Al principio puede poner `https://ruth.vercel.app` y corregirla después.
+## Proyecto `ruth` (cliente)
 
-   `JWT_ACCESS_SECRET` y `JWT_REFRESH_SECRET` se generan solos.
-4. Si Render le asigna una URL distinta de `https://ruth-api.onrender.com`, actualice el `destination` en `vercel.json`.
-5. Compruebe que la API responde:
-   ```bash
-   curl https://ruth-api.onrender.com/api/health
-   ```
+- **Root Directory:** raíz del repo. Su configuración está en `vercel.json`: genera el sitio estático con `NUXT_PUBLIC_API_BASE=/api`, reenvía `/api/*` a `https://ruth-api.vercel.app` y usa `200.html` como respaldo de la SPA.
+- Si la API queda con otra URL, cambie el `destination` en `vercel.json`.
 
-## 3. Cliente en Vercel
+## Limitaciones (plan Hobby)
 
-1. En vercel.com, **Add New → Project** e importe el repositorio `ruth`, con Root Directory = raíz del repositorio. `vercel.json` ya define la instalación, el build (`nuxt generate` con `NUXT_PUBLIC_API_BASE=/api`) y los rewrites.
-2. Copie la URL asignada (por ejemplo `https://ruth-xyz.vercel.app`) en `CLIENT_URL` de Render y vuelva a desplegar la API. Esa URL se usa en CORS y en los enlaces de jurado externo.
-
-## 4. Datos y verificación
-
-- Si usa una base nueva, cargue el seed desde su equipo con `server/.env` apuntando a esa base:
-  ```bash
-  pnpm --filter server seed -- --reset
-  ```
-  El enlace externo que imprime el seed usa `localhost`; en producción, genere uno nuevo desde la tesis 3 (**Enlace externo**).
-- Ingrese con `coordinador@unicordoba.edu.co` / `Coord2026!`. Recuerde que son credenciales de demostración públicas en el README: cámbielas antes de usar datos reales.
-
-## Limitaciones del plan gratuito
-
-- Render apaga la API tras 15 minutos sin tráfico, y el primer acceso tarda unos 50 segundos. Abra la página 1 o 2 minutos antes de la demo.
-- Mientras la API está dormida, las tareas programadas (vencimientos cada hora, alertas a las 07:00) no corren. Para la demo puede ejecutarlas como ADMIN con `POST /api/admin/jobs/run`.
+- **Subida de manuscritos:** cada petición admite como máximo 4,5 MB, así que no se pueden subir PDF más grandes (localmente el límite es 25 MB).
+- **Cron:** corre una vez al día. Los vencimientos de asignaciones se revisan a diario, no cada hora. Para una demostración se puede forzar con `POST /api/admin/jobs/run` (ADMIN).
+- **Arranque en frío:** la primera petición tras un tiempo sin uso tarda unos segundos.

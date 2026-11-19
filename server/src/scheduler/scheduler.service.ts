@@ -5,7 +5,8 @@ import { SYSTEM_ACTOR } from '../common/types/actor';
 import { EvaluationsService } from '../evaluations/evaluations.service';
 import { AlertJobsService } from './alert-jobs.service';
 
-const DISABLED = process.env.NODE_ENV === 'test';
+// Off in tests and on Vercel (serverless: Vercel Cron calls GET /api/admin/jobs/cron instead).
+const DISABLED = process.env.NODE_ENV === 'test' || !!process.env.VERCEL;
 
 @Injectable()
 export class SchedulerService {
