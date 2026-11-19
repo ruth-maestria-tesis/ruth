@@ -91,7 +91,8 @@ export interface HistoryEntry {
   actorId?: string;
   actorRole: string;
   reason?: string;
-  evidenceFileIds: string[];
+  /** Staff only. */
+  evidenceFileIds?: string[];
 }
 
 export interface Thesis {
@@ -111,7 +112,8 @@ export interface Thesis {
   progress: number;
   manuscripts: ManuscriptVersion[];
   currentManuscriptId?: string;
-  conflictOfInterestUserIds: string[];
+  /** Staff only (COORDINATOR/ADMIN). */
+  conflictOfInterestUserIds?: string[];
   history?: HistoryEntry[];
   createdAt: string;
   updatedAt: string;
