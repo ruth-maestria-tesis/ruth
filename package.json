@@ -5,6 +5,9 @@
     "build:shared": "pnpm --filter @thesis/shared build",
     "dev:server": "pnpm --filter server start:dev",
     "test:server": "pnpm --filter server test && pnpm --filter server test:e2e",
-    "lint:server": "pnpm --filter server lint"
+    "lint:server": "pnpm --filter server lint",
+    "dev:client": "pnpm --filter client dev",
+    "build:client": "pnpm --filter client build",
+    "typecheck:client": "pnpm --filter client typecheck"
   }
 }

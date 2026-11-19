@@ -1,7 +1,9 @@
 packages:
   - shared
   - server
+  - client
 allowBuilds:
+  esbuild: true
   '@parcel/watcher': true
   '@scarf/scarf': false
   mongodb-memory-server: true
