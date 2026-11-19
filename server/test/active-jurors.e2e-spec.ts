@@ -86,8 +86,10 @@ describe('Active jurors — tiebreaker only if it submitted (e2e)', () => {
       .send({ finalGrade: 4, verdict: MinutesVerdict.APPROVED, remarks: 'Ok' })
       .expect(201);
 
-  const signerIds = (body: { requiredSigners: { userId: string }[] }) =>
-    body.requiredSigners.map((s) => s.userId);
+  const signerIds = (body: unknown) =>
+    (body as { requiredSigners: { userId: string }[] }).requiredSigners.map(
+      (s) => s.userId,
+    );
 
   it('an accepted tiebreaker that never evaluated is neither a confirmer nor a signer', async () => {
     const fx = await disputeWithAcceptedTiebreaker();

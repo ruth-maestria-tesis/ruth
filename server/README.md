@@ -22,6 +22,7 @@
 | `pnpm test:server` | Unitarias y e2e |
 | `pnpm lint:server` | ESLint |
 | `ADMIN_EMAIL=admin@unicordoba.edu.co ADMIN_PASSWORD='***' pnpm --filter server admin:create` | Crea el primer administrador (usa `server/.env`; si el usuario ya existe no hace nada) |
+| `pnpm --filter server seed -- --reset` | Borra y vuelve a crear los datos de demostración (`seedTag: 'DEMO'`); ver [Datos de demostración](#datos-de-demostración-seed) |
 
 El comando de administrador compila `@thesis/shared` y el servidor, y luego ejecuta `dist/cli/create-admin.js` con `server/` como directorio de trabajo, así que lee `server/.env` (incluida `NODE_ENV`). Fuera de local, define `NODE_ENV=production`, `MONGODB_URI` y los secretos JWT en el entorno antes de ejecutarlo.
 
@@ -53,3 +54,26 @@ Swagger: `http://localhost:3001/api/docs`, disponible solo cuando `NODE_ENV=deve
 - Jurado externo: el coordinador obtiene el enlace con `POST /api/assignments/:id/external-link` (también viene en la respuesta de la asignación) y lo envía por su cuenta; `POST /api/auth/external/validate-token` con `{ token }` abre una sesión limitada a esa asignación (solo cookie `access_token`, sin contraseña, sin refresh). Variables `EXTERNAL_TOKEN_TTL_DAYS` y `EXTERNAL_SESSION_TTL_SECONDS`.
 - Los jurados externos nunca tienen contraseña.
 - El vencimiento automático de asignaciones (`expirePending`) se programará en la sub-etapa 8.
+
+## Datos de demostración (seed)
+
+```bash
+pnpm --filter server seed -- --reset          # borra lo etiquetado DEMO y lo vuelve a crear
+pnpm --filter server seed -- --reset --tag=QA # otra etiqueta (se normaliza a mayúsculas)
+```
+
+- Usa `server/.env` como `admin:create`. **Nunca lo ejecutes contra la base de producción.**
+- Sin `--reset`, el comando se niega a correr si ya existen los datos de esa etiqueta.
+- `--reset` borra solo documentos con `seedTag: 'DEMO'`: usuarios, catálogos creados por el seed, tesis, asignaciones, evaluaciones, observaciones, sustentaciones, actas, notificaciones, archivos GridFS (`metadata.seedTag`) y los contadores de códigos `DEMO-…`. El contador de actas solo se borra si ya no lo usa ninguna acta.
+- Todo se construye llamando a los servicios reales como los usuarios sembrados, así que el historial, los eventos, los plazos y los hashes son coherentes. Cada tesis tiene un manuscrito PDF.
+- Al final imprime las credenciales, las tesis por estado y un enlace de acceso para un jurado externo con asignación pendiente.
+
+| Rol | Correo | Contraseña |
+|---|---|---|
+| ADMIN | `admin@unicordoba.edu.co` | `Admin2026!` |
+| COORDINATOR | `coordinador@unicordoba.edu.co` | `Coord2026!` |
+| INTERNAL_JUROR (6) | `jurado1@unicordoba.edu.co` … `jurado6@unicordoba.edu.co` | `Jurado2026!` |
+| STUDENT (15) | `estudiante1@correo.unicordoba.edu.co` … `estudiante15@correo.unicordoba.edu.co` | `Estudiante2026!` |
+| EXTERNAL_JUROR (3) | `diego.quintero@externo.example.org`, `mariajose.fernandez@externo.example.org`, `ricardo.salazar@externo.example.org` | sin contraseña (enlace externo) |
+
+Programa MIETIA, periodos 2025-II y 2026-I, dos cohortes y 15 tesis (`DEMO-MIETIA-…`) con al menos una en cada estado. Para el portal del jurado, `jurado1` tiene una asignación PENDIENTE por aceptar (tesis 2025-II-003) y otra ACEPTADA en evaluación con un borrador (2025-II-005).

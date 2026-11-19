@@ -50,6 +50,10 @@ export class Defense {
 
   @Prop({ type: ObjectId, ref: 'User', required: true })
   createdBy!: Types.ObjectId;
+
+  /** Demo data written by the seed command. */
+  @Prop()
+  seedTag?: string;
 }
 
 export type DefenseDocument = HydratedDocument<Defense>;
@@ -61,3 +65,4 @@ DefenseSchema.index(
   { unique: true, partialFilterExpression: { isOpen: true } },
 );
 DefenseSchema.index({ scheduledAt: 1 });
+DefenseSchema.index({ seedTag: 1 }, { sparse: true });
