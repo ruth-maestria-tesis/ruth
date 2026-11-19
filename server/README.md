@@ -45,6 +45,16 @@ Swagger: `http://localhost:3001/api/docs`, disponible solo cuando `NODE_ENV=deve
 - `POST /api/theses/:id/manuscripts` (multipart, campo `file`, solo PDF, máx. 25 MB; lo pueden subir COORDINATOR y el STUDENT dueño de la tesis) y `GET /api/theses/:id/manuscripts/:fileId` (ADMIN, COORDINATOR y STUDENT dueño). El nombre de archivo admite caracteres no ASCII (tildes, ñ).
 - Nota: los cambios de estado solo ocurren mediante `WorkflowService` (sub-etapas siguientes); se emite el evento `thesis.status.changed`.
 
+### Almacenamiento de archivos (`STORAGE_DRIVER`)
+- `gridfs` (por defecto, en local y en todas las pruebas): los archivos van a GridFS como siempre.
+- `vercel-blob` (producción en Vercel, requiere `BLOB_READ_WRITE_TOKEN`): manuscritos y archivos de corrección se suben directo del navegador a un Blob store **privado**, para evitar el límite de 4,5 MB por petición de las funciones de Vercel:
+  1. `POST /api/theses/:id/manuscripts/uploads` (o `/api/evaluations/:id/corrections/uploads`) con `{ fileName, size, contentType }`, con la misma autorización que la subida multipart → `{ strategy: 'DIRECT', clientToken, pathname, expiresAt }` (token de 10 min limitado a esa ruta, tipo y tamaño), o `{ strategy: 'MULTIPART' }` con `gridfs`.
+  2. El navegador sube con `put()` de `@vercel/blob/client`.
+  3. `POST …/uploads/complete` con `{ pathname, fileName }`: vuelve a autorizar, comprueba la ruta, el tamaño y los bytes mágicos, registra el archivo y responde igual que la subida multipart. Si el archivo no es válido, se borra del Blob store.
+- Las descargas mantienen sus rutas: los archivos en Blob responden `302` a una URL firmada de 5 minutos (`?as=url` → `{ url, expiresAt }`), con `Cache-Control: no-store`; los de GridFS se envían como antes.
+- Los metadatos siempre están en Mongo (`files.files`, con `metadata.storage` y `metadata.blobPathname`). La subida multipart, el PDF del acta y el seed siguen usando GridFS en ambos modos.
+- Contrato completo: `docs/superpowers/specs/2026-11-19-mvp-api-contracts.md` §14.
+
 ## Asignación de jurados (sub-etapa 3)
 - Configuración: `GET|PATCH /api/settings` (plazos en días hábiles y festivos `YYYY-MM-DD`; el administrador carga el calendario de festivos de Colombia). Los días hábiles se calculan con la hora de Bogotá; el plazo vence al final del último día hábil.
 - CU-01: `POST /api/theses/:id/assignments` con `jurors: [{ jurorId } | { newExternal }]` (exactamente 2, al menos uno de Unicórdoba, sin conflicto de interés) y `responseBusinessDays` opcional; `POST /api/assignments/validate` para la validación en vivo; `GET /api/theses/:id/assignments`.
@@ -64,7 +74,7 @@ pnpm --filter server seed -- --reset --tag=QA # otra etiqueta (se normaliza a ma
 
 - Usa `server/.env` como `admin:create`. **Nunca lo ejecutes contra la base de producción.**
 - Sin `--reset`, el comando se niega a correr si ya existen los datos de esa etiqueta.
-- `--reset` borra solo documentos con `seedTag: 'DEMO'`: usuarios, catálogos creados por el seed, tesis, asignaciones, evaluaciones, observaciones, sustentaciones, actas, notificaciones, archivos GridFS (`metadata.seedTag`) y los contadores de códigos `DEMO-…`. El contador de actas solo se borra si ya no lo usa ninguna acta.
+- `--reset` borra solo documentos con `seedTag: 'DEMO'`: usuarios, catálogos creados por el seed, tesis, asignaciones, evaluaciones, observaciones, sustentaciones, actas, notificaciones, archivos (`metadata.seedTag`; los de Blob también se borran del store) y los contadores de códigos `DEMO-…`. El contador de actas solo se borra si ya no lo usa ninguna acta.
 - Todo se construye llamando a los servicios reales como los usuarios sembrados, así que el historial, los eventos, los plazos y los hashes son coherentes. Cada tesis tiene un manuscrito PDF.
 - Al final imprime las credenciales, las tesis por estado y un enlace de acceso para un jurado externo con asignación pendiente.
 

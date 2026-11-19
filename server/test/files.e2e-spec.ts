@@ -47,7 +47,7 @@ describe('FilesService (e2e, GridFS)', () => {
       kind: FileKind.MANUSCRIPT,
       mimeType: 'application/pdf',
     });
-    expect(await text(stream)).toBe(PDF_BYTES.toString());
+    expect(await text(stream!)).toBe(PDF_BYTES.toString());
   });
 
   it('accepts docx where allowed and labels its MIME type', async () => {
@@ -129,7 +129,7 @@ describe('FilesService (e2e, GridFS)', () => {
       ['pdf'],
     );
     const { info, stream } = await files.openDownload(stored.id);
-    stream.destroy();
+    stream!.destroy();
     expect(info.metadata?.ownerId).toBeInstanceOf(Types.ObjectId);
     expect(info.metadata?.ownerId.toHexString()).toBe(ownerId);
     expect(info.metadata?.thesisId?.toHexString()).toBe(thesisId);

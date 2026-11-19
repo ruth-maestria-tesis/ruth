@@ -13,7 +13,6 @@ import {
   ThesisStatus,
 } from '@thesis/shared';
 import { isValidObjectId, Model, Types } from 'mongoose';
-import type { Readable } from 'node:stream';
 import { AssignmentView } from '../assignments/assignment-view';
 import { AssignmentsService } from '../assignments/assignments.service';
 import { AssignmentDocument } from '../assignments/schemas/assignment.schema';
@@ -22,7 +21,15 @@ import { AppException } from '../common/errors/app.exception';
 import { Actor, actorFrom, SYSTEM_ACTOR } from '../common/types/actor';
 import type { AuthUser } from '../common/types/auth-user';
 import { FeedbackService } from '../feedback/feedback.service';
-import { FilesService, GridFile, UploadInput } from '../files/files.service';
+import { CompleteUploadDto, CreateUploadDto } from '../files/dto/upload.dto';
+import { AllowedFileType } from '../files/file-type';
+import {
+  FilesService,
+  OpenedFile,
+  StoredFile,
+  UploadInput,
+  UploadTicket,
+} from '../files/files.service';
 import { ThesisDocument } from '../theses/schemas/thesis.schema';
 import { ThesesService } from '../theses/theses.service';
 import { UsersService } from '../users/users.service';
@@ -113,6 +120,12 @@ const notComplete = (details?: unknown) =>
     details,
   );
 
+const CORRECTION_TYPES: readonly AllowedFileType[] = ['pdf', 'doc', 'docx'];
+
+/** Blob prefix of an evaluation's correction files. */
+const correctionScope = (e: EvaluationDocument) =>
+  `corrections/${e._id.toHexString()}`;
+
 const isDuplicateKey = (e: unknown) => (e as { code?: number })?.code === 11000;
 
 const withMeta = (d: EvaluationDocument) =>
@@ -188,7 +201,7 @@ export class EvaluationsService {
     fileId: string,
     user: AuthUser,
     ip?: string,
-  ): Promise<{ info: GridFile; stream: Readable }> {
+  ): Promise<OpenedFile> {
     const { evaluation, mode } = await this.findReadableDoc(id, user);
     if (!evaluation.correctionFiles.some((f) => f.fileId.equals(fileId))) {
       throw new AppException(
@@ -380,13 +393,7 @@ export class EvaluationsService {
     file: UploadInput | undefined,
     user: AuthUser,
   ): Promise<EvaluationView> {
-    const e = await this.findDoc(id);
-    const owner =
-      e.jurorId.equals(user.id) &&
-      (!user.scope ||
-        user.scope.assignmentIds.includes(e.assignmentId.toHexString()));
-    if (!owner) throw evaluationNotFound();
-    if (e.status !== EvaluationStatus.DRAFT) throw locked();
+    const e = await this.findCorrectable(id, user);
     const stored = await this.files.upload(
       file,
       {
@@ -394,8 +401,60 @@ export class EvaluationsService {
         thesisId: e.thesisId.toHexString(),
         kind: FileKind.CORRECTION,
       },
-      ['pdf', 'doc', 'docx'],
+      CORRECTION_TYPES,
     );
+    return this.attachCorrection(e, stored);
+  }
+
+  /** Direct upload, step 1: same authorization as the multipart route. */
+  async createCorrectionUpload(
+    id: string,
+    dto: CreateUploadDto,
+    user: AuthUser,
+  ): Promise<UploadTicket> {
+    const e = await this.findCorrectable(id, user);
+    return this.files.createUpload(correctionScope(e), dto, CORRECTION_TYPES);
+  }
+
+  /** Direct upload, step 3: re-authorizes, verifies the blob, then attaches it. */
+  async completeCorrectionUpload(
+    id: string,
+    dto: CompleteUploadDto,
+    user: AuthUser,
+  ): Promise<EvaluationView> {
+    const e = await this.findCorrectable(id, user);
+    const stored = await this.files.completeUpload(
+      correctionScope(e),
+      dto,
+      {
+        ownerId: user.id,
+        thesisId: e.thesisId.toHexString(),
+        kind: FileKind.CORRECTION,
+      },
+      CORRECTION_TYPES,
+    );
+    return this.attachCorrection(e, stored);
+  }
+
+  /** The author's own draft (and within a scoped session's assignments). */
+  private async findCorrectable(
+    id: string,
+    user: AuthUser,
+  ): Promise<EvaluationDocument> {
+    const e = await this.findDoc(id);
+    const owner =
+      e.jurorId.equals(user.id) &&
+      (!user.scope ||
+        user.scope.assignmentIds.includes(e.assignmentId.toHexString()));
+    if (!owner) throw evaluationNotFound();
+    if (e.status !== EvaluationStatus.DRAFT) throw locked();
+    return e;
+  }
+
+  private async attachCorrection(
+    e: EvaluationDocument,
+    stored: StoredFile,
+  ): Promise<EvaluationView> {
     const updated = await this.model
       .findOneAndUpdate(
         { _id: e._id, status: EvaluationStatus.DRAFT },

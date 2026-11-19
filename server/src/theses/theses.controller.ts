@@ -2,24 +2,27 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
   Param,
   Patch,
   Post,
   Query,
-  StreamableFile,
+  Res,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBody, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { Role } from '@thesis/shared';
+import type { Response } from 'express';
 import { AllowScoped } from '../common/decorators/allow-scoped.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { ParseObjectIdPipe } from '../common/pipes/parse-object-id.pipe';
 import { actorFrom } from '../common/types/actor';
 import type { AuthUser } from '../common/types/auth-user';
-import { contentDisposition } from '../files/content-disposition';
+import { CompleteUploadDto, CreateUploadDto } from '../files/dto/upload.dto';
+import { fileResponse } from '../files/file-response';
 import { MAX_FILE_BYTES } from '../files/file-type';
 import { CreateThesisDto } from './dto/create-thesis.dto';
 import { QueryThesesDto } from './dto/query-theses.dto';
@@ -100,6 +103,30 @@ export class ThesesController {
     return this.theses.viewAfterUpload(thesis, user);
   }
 
+  /** Direct upload, step 1: `{ strategy: 'DIRECT', clientToken, pathname, expiresAt }` or MULTIPART. */
+  @Post(':id/manuscripts/uploads')
+  @HttpCode(200)
+  @Roles(Role.COORDINATOR, Role.STUDENT)
+  createManuscriptUpload(
+    @Param('id', ParseObjectIdPipe) id: string,
+    @Body() dto: CreateUploadDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.theses.createManuscriptUpload(id, dto, user);
+  }
+
+  /** Direct upload, step 3: registers the uploaded blob; same response as the multipart route. */
+  @Post(':id/manuscripts/uploads/complete')
+  @Roles(Role.COORDINATOR, Role.STUDENT)
+  async completeManuscriptUpload(
+    @Param('id', ParseObjectIdPipe) id: string,
+    @Body() dto: CompleteUploadDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    const thesis = await this.theses.completeManuscriptUpload(id, dto, user);
+    return this.theses.viewAfterUpload(thesis, user);
+  }
+
   @AllowScoped()
   @Get(':id/manuscripts/:fileId')
   @Roles(
@@ -112,15 +139,11 @@ export class ThesesController {
   async downloadManuscript(
     @Param('id', ParseObjectIdPipe) id: string,
     @Param('fileId', ParseObjectIdPipe) fileId: string,
+    @Query('as') as: string | undefined,
     @CurrentUser() user: AuthUser,
-  ): Promise<StreamableFile> {
-    const { info, stream } = await this.theses.openManuscript(id, fileId, user);
-    // StreamableFile attaches an error handler to the GridFS stream (logs; 400 or socket end),
-    // so a stream failure cannot become an unhandled 'error' event.
-    return new StreamableFile(stream, {
-      type: info.metadata?.mimeType ?? 'application/octet-stream',
-      disposition: contentDisposition(info.filename),
-      length: info.length,
-    });
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const opened = await this.theses.openManuscript(id, fileId, user);
+    return fileResponse(opened, res, { asUrl: as === 'url' });
   }
 }

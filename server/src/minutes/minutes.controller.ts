@@ -7,19 +7,20 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Req,
-  StreamableFile,
+  Res,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Role } from '@thesis/shared';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { AllowScoped } from '../common/decorators/allow-scoped.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { orJsonNull } from '../common/http/json-null';
 import { ParseObjectIdPipe } from '../common/pipes/parse-object-id.pipe';
 import type { AuthUser } from '../common/types/auth-user';
-import { contentDisposition } from '../files/content-disposition';
+import { fileResponse } from '../files/file-response';
 import { CreateMinutesDto, UpdateMinutesDto } from './dto/minutes.dto';
 import { MinutesService } from './minutes.service';
 
@@ -99,13 +100,14 @@ export class MinutesController {
   @Roles(...READERS)
   async pdf(
     @Param('id', ParseObjectIdPipe) id: string,
+    @Query('as') as: string | undefined,
     @CurrentUser() user: AuthUser,
-  ): Promise<StreamableFile> {
-    const { info, stream } = await this.minutes.openPdf(id, user);
-    return new StreamableFile(stream, {
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const opened = await this.minutes.openPdf(id, user);
+    return fileResponse(opened, res, {
+      asUrl: as === 'url',
       type: 'application/pdf',
-      disposition: contentDisposition(info.filename),
-      length: info.length,
     });
   }
 }

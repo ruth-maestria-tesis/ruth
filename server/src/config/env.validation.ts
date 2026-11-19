@@ -22,4 +22,12 @@ export const envValidationSchema = Joi.object({
     .min(300)
     .max(86_400)
     .default(14_400),
+  /** Where direct uploads go: GridFS (default, local and tests) or a private Vercel Blob store. */
+  STORAGE_DRIVER: Joi.string().valid('gridfs', 'vercel-blob').default('gridfs'),
+  /** Set by Vercel when the Blob store is connected; required by the vercel-blob driver. */
+  BLOB_READ_WRITE_TOKEN: Joi.when('STORAGE_DRIVER', {
+    is: 'vercel-blob',
+    then: Joi.string().required(),
+    otherwise: Joi.string().optional(),
+  }),
 });
