@@ -1,0 +1,11 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "installCommand": "npm i -g pnpm@11.25.0 && MONGOMS_DISABLE_POSTINSTALL=1 pnpm install --frozen-lockfile",
+  "buildCommand": "NUXT_PUBLIC_API_BASE=/api pnpm --filter client generate",
+  "outputDirectory": "client/.output/public",
+  "rewrites": [
+    { "source": "/api/:path*", "destination": "https://ruth-api.onrender.com/api/:path*" },
+    { "source": "/((?!api/).*)", "destination": "/200.html" }
+  ]
+}
