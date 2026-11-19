@@ -958,6 +958,34 @@ export class AssignmentsService {
     return links;
   }
 
+  /** RF-J14: rotate the link of an external juror's active assignment (coordinator copies it). */
+  async issueExternalLink(id: string): Promise<ExternalLink> {
+    const a = await this.findById(id);
+    const [juror] = await this.users.findManyByIds([a.jurorId.toHexString()]);
+    if (!juror || !isExternalOnly(juror.roles)) {
+      throw new AppException(
+        ErrorCode.ASSIGNMENT_NOT_EXTERNAL,
+        HttpStatus.CONFLICT,
+        'The juror is not external',
+      );
+    }
+    return this.rotateLink(a);
+  }
+
+  /** Active assignment whose live token hash matches. */
+  findByExternalTokenHash(
+    hash: string,
+    now = new Date(),
+  ): Promise<AssignmentDocument | null> {
+    return this.model
+      .findOne({
+        externalTokenHash: hash,
+        externalTokenExpiresAt: { $gt: now },
+        status: { $in: ACTIVE_ASSIGNMENT_STATUSES },
+      })
+      .exec();
+  }
+
   /** New token for an active assignment; the previous link stops working. */
   async rotateLink(a: AssignmentDocument): Promise<ExternalLink> {
     const { token, hash } = newExternalToken();

@@ -109,4 +109,12 @@ export class AssignmentsController {
   ) {
     return this.responses.decline(id, user, dto.reason);
   }
+
+  /** RF-J14: new access link for an external juror (invalidates the previous one). */
+  @Post('assignments/:id/external-link')
+  @HttpCode(200)
+  @Roles(Role.COORDINATOR)
+  externalLink(@Param('id', ParseObjectIdPipe) id: string) {
+    return this.assignments.issueExternalLink(id);
+  }
 }

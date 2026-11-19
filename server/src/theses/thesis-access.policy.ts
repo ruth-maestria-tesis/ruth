@@ -3,8 +3,8 @@ import type { Types } from 'mongoose';
 import type { AuthUser } from '../common/types/auth-user';
 
 /**
- * Read access to a thesis and its manuscripts (RBAC matrix).
- * Stage 3 extends this with "juror with an ACCEPTED assignment".
+ * Read access to a thesis and its manuscripts for staff and the owner student (RBAC matrix).
+ * Jurors are covered by `jurorAccessLevel` (ThesesService checks their assignments).
  */
 export function canReadThesis(
   user: AuthUser,

@@ -28,6 +28,7 @@ const ALL: Role[] = [
 ];
 const WITH_EXTERNAL: Role[] = [...ALL, Role.EXTERNAL_JUROR];
 const MANAGERS: Role[] = [Role.ADMIN, Role.COORDINATOR];
+const JURORS: Role[] = [Role.INTERNAL_JUROR, Role.EXTERNAL_JUROR];
 const ID = '65a1b2c3d4e5f60718293a4b';
 
 /** RBAC matrix (mapa-navegacion-rbac.md §3) for stage-2 endpoints. */
@@ -47,7 +48,7 @@ const matrix = (thesisId: string): Row[] => [
   {
     method: 'get',
     path: `/api/theses/${thesisId}`,
-    allowed: [Role.ADMIN, Role.COORDINATOR, Role.STUDENT],
+    allowed: [Role.ADMIN, Role.COORDINATOR, Role.STUDENT, ...JURORS],
   },
   {
     method: 'patch',
@@ -62,7 +63,7 @@ const matrix = (thesisId: string): Row[] => [
   {
     method: 'get',
     path: `/api/theses/${thesisId}/manuscripts/${ID}`,
-    allowed: [Role.ADMIN, Role.COORDINATOR, Role.STUDENT],
+    allowed: [Role.ADMIN, Role.COORDINATOR, Role.STUDENT, ...JURORS],
   },
 ];
 

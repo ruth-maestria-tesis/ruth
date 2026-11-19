@@ -1,6 +1,7 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import {
+  ACTIVE_ASSIGNMENT_STATUSES,
   ErrorCode,
   FileKind,
   JUROR_ROLES,
@@ -11,6 +12,7 @@ import {
 } from '@thesis/shared';
 import { FilterQuery, isValidObjectId, Model, Types } from 'mongoose';
 import type { Readable } from 'node:stream';
+import { Assignment } from '../assignments/schemas/assignment.schema';
 import { CatalogsService } from '../catalogs/catalogs.service';
 import { AppException } from '../common/errors/app.exception';
 import { paginate, SortFields } from '../common/pagination/paginate';
@@ -27,7 +29,12 @@ import { CreateThesisDto } from './dto/create-thesis.dto';
 import { QueryThesesDto } from './dto/query-theses.dto';
 import { UpdateThesisDto } from './dto/update-thesis.dto';
 import { Thesis, ThesisDocument } from './schemas/thesis.schema';
-import { canReadThesis, canWriteThesis } from './thesis-access.policy';
+import {
+  canReadThesis,
+  canWriteThesis,
+  JurorAccess,
+  jurorAccessLevel,
+} from './thesis-access.policy';
 import { ThesisCodeService } from './thesis-code';
 
 const SORT_FIELDS: SortFields = {
@@ -76,6 +83,8 @@ const isFaculty = (u?: UserDocument) =>
 export class ThesesService {
   constructor(
     @InjectModel(Thesis.name) private readonly model: Model<Thesis>,
+    @InjectModel(Assignment.name)
+    private readonly assignmentModel: Model<Assignment>,
     private readonly catalogs: CatalogsService,
     private readonly users: UsersService,
     private readonly codes: ThesisCodeService,
@@ -202,8 +211,25 @@ export class ThesesService {
   /** 404 (not 403) for theses the user may not read, so ids cannot be probed. */
   async findReadable(id: string, user: AuthUser): Promise<ThesisDocument> {
     const thesis = await this.findById(id);
-    if (!canReadThesis(user, thesis)) throw thesisNotFound();
-    return thesis;
+    if (canReadThesis(user, thesis)) return thesis;
+    if ((await this.jurorAccess(thesis._id, user)) !== 'NONE') return thesis;
+    throw thesisNotFound();
+  }
+
+  /** RBAC "Si Aceptó": this user's active assignments on the thesis (scope-limited). */
+  private async jurorAccess(
+    thesisId: Types.ObjectId,
+    user: AuthUser,
+  ): Promise<JurorAccess> {
+    if (!user.roles.some((r) => JUROR_ROLES.includes(r))) return 'NONE';
+    const filter: FilterQuery<Assignment> = {
+      thesisId,
+      jurorId: user.id,
+      status: { $in: ACTIVE_ASSIGNMENT_STATUSES },
+    };
+    if (user.scope) filter._id = { $in: user.scope.assignmentIds };
+    const found = await this.assignmentModel.find(filter, 'status').exec();
+    return jurorAccessLevel(found.map((a) => a.status));
   }
 
   async update(id: string, dto: UpdateThesisDto): Promise<ThesisDocument> {
@@ -360,7 +386,11 @@ export class ThesesService {
     fileId: string,
     user: AuthUser,
   ): Promise<{ info: GridFile; stream: Readable }> {
-    const thesis = await this.findReadable(id, user);
+    const thesis = await this.findById(id);
+    const allowed =
+      canReadThesis(user, thesis) ||
+      (await this.jurorAccess(thesis._id, user)) === 'MANUSCRIPT';
+    if (!allowed) throw thesisNotFound();
     if (!thesis.manuscripts.some((m) => m.fileId.equals(fileId))) {
       throw new AppException(
         ErrorCode.FILE_NOT_FOUND,

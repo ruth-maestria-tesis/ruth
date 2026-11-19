@@ -44,7 +44,13 @@ export class ThesesController {
   }
 
   @Get(':id')
-  @Roles(Role.ADMIN, Role.COORDINATOR, Role.STUDENT)
+  @Roles(
+    Role.ADMIN,
+    Role.COORDINATOR,
+    Role.STUDENT,
+    Role.INTERNAL_JUROR,
+    Role.EXTERNAL_JUROR,
+  )
   findOne(
     @Param('id', ParseObjectIdPipe) id: string,
     @CurrentUser() user: AuthUser,
@@ -92,7 +98,13 @@ export class ThesesController {
   }
 
   @Get(':id/manuscripts/:fileId')
-  @Roles(Role.ADMIN, Role.COORDINATOR, Role.STUDENT)
+  @Roles(
+    Role.ADMIN,
+    Role.COORDINATOR,
+    Role.STUDENT,
+    Role.INTERNAL_JUROR,
+    Role.EXTERNAL_JUROR,
+  )
   async downloadManuscript(
     @Param('id', ParseObjectIdPipe) id: string,
     @Param('fileId', ParseObjectIdPipe) fileId: string,

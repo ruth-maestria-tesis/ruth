@@ -109,14 +109,14 @@ describe('Manuscripts (e2e)', () => {
     await admin.post(url()).attach('file', PDF_BYTES, pdf('x.pdf')).expect(403);
   });
 
-  it('other students and jurors cannot upload or download (404 / 403)', async () => {
+  it('other students and unassigned jurors cannot upload or download (404)', async () => {
     const fileId = await firstFileId();
     await stranger.get(`${url()}/${fileId}`).expect(404);
     await stranger
       .post(url())
       .attach('file', PDF_BYTES, pdf('x.pdf'))
       .expect(404);
-    await juror.get(`${url()}/${fileId}`).expect(403);
+    await juror.get(`${url()}/${fileId}`).expect(404);
   });
 
   it('an admin who is also a non-owner student still cannot upload (404)', async () => {
