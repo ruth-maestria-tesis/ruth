@@ -27,6 +27,7 @@ import { EvaluationsService } from '../evaluations/evaluations.service';
 import { Evaluation } from '../evaluations/schemas/evaluation.schema';
 import { FeedbackService } from '../feedback/feedback.service';
 import { FeedbackItem } from '../feedback/schemas/feedback-item.schema';
+import { FilesService } from '../files/files.service';
 import { MinutesService } from '../minutes/minutes.service';
 import { Minutes } from '../minutes/schemas/minutes.schema';
 import { Notification } from '../notifications/schemas/notification.schema';
@@ -199,7 +200,9 @@ export async function resetSeed(
       'metadata.thesisId': { $nin: keepTheses },
     })
     .toArray();
-  for (const f of files) await bucket.delete(f._id);
+  // FilesService also removes the bytes of blob-stored files (uploaded to seeded theses).
+  const filesService = app.get(FilesService);
+  for (const f of files) await filesService.delete(f._id.toHexString());
   removed.files = files.length;
 
   removed.notifications = (

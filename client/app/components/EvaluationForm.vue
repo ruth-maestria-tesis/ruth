@@ -19,6 +19,8 @@ const comments = ref('');
 const file = ref<File | File[] | null>(null);
 const loading = ref(true);
 const saving = ref(false);
+/** Direct (Blob) upload progress of the correction file, 0–100; null when not reported. */
+const progress = ref<number | null>(null);
 const confirmOpen = ref(false);
 
 const locked = computed(() => evaluation.value?.status === EvaluationStatus.SUBMITTED);
@@ -74,7 +76,7 @@ async function saveDraft(silent = false): Promise<boolean> {
     fill(await evaluationsApi.saveDraft(props.assignment.id, props.assignment.thesisId, payload()));
     const f = Array.isArray(file.value) ? file.value[0] : file.value;
     if (f && evaluation.value) {
-      fill(await evaluationsApi.uploadCorrection(evaluation.value.id, f));
+      fill(await evaluationsApi.uploadCorrection(evaluation.value.id, f, (p) => (progress.value = p)));
       file.value = null;
     }
     if (!silent) ui.notify('Borrador guardado.');
@@ -84,6 +86,7 @@ async function saveDraft(silent = false): Promise<boolean> {
     return false;
   } finally {
     saving.value = false;
+    progress.value = null;
   }
 }
 
@@ -164,6 +167,7 @@ async function submit() {
         prepend-inner-icon="mdi-paperclip"
         show-size
       />
+      <v-progress-linear v-if="progress !== null" :model-value="progress" color="primary" height="6" rounded />
 
       <div v-if="!locked" class="d-flex flex-column ga-2 mt-2">
         <v-btn variant="outlined" :loading="saving" prepend-icon="mdi-content-save-outline" @click="saveDraft()">Guardar borrador</v-btn>

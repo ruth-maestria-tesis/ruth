@@ -23,6 +23,10 @@ import { AssignmentsService } from '../../src/assignments/assignments.service';
 import { CatalogsService } from '../../src/catalogs/catalogs.service';
 import type { AuthUser } from '../../src/common/types/auth-user';
 import { EvaluationsService } from '../../src/evaluations/evaluations.service';
+import {
+  STORAGE_DRIVER,
+  type StorageDriver,
+} from '../../src/files/blob-storage';
 import { ThesisDocument } from '../../src/theses/schemas/thesis.schema';
 import { ThesesService } from '../../src/theses/theses.service';
 import { CreateUserDto } from '../../src/users/dto/create-user.dto';
@@ -31,10 +35,14 @@ import { UserDocument } from '../../src/users/schemas/user.schema';
 import { UsersService } from '../../src/users/users.service';
 import { WorkflowService } from '../../src/workflow/workflow.service';
 
-export async function createTestApp(): Promise<INestApplication> {
-  const moduleRef = await Test.createTestingModule({
-    imports: [AppModule],
-  }).compile();
+/** `storageDriver` overrides STORAGE_DRIVER (env is read when AppModule is imported). */
+export async function createTestApp(
+  opts: { storageDriver?: StorageDriver } = {},
+): Promise<INestApplication> {
+  const builder = Test.createTestingModule({ imports: [AppModule] });
+  if (opts.storageDriver)
+    builder.overrideProvider(STORAGE_DRIVER).useValue(opts.storageDriver);
+  const moduleRef = await builder.compile();
   const app = moduleRef.createNestApplication();
   configureApp(app);
   await app.init();

@@ -11,7 +11,6 @@ import {
   ThesisStatus,
 } from '@thesis/shared';
 import { FilterQuery, isValidObjectId, Model, Types } from 'mongoose';
-import type { Readable } from 'node:stream';
 import { Assignment } from '../assignments/schemas/assignment.schema';
 import { CatalogsService } from '../catalogs/catalogs.service';
 import { AppException } from '../common/errors/app.exception';
@@ -21,7 +20,14 @@ import type { Actor } from '../common/types/actor';
 import type { AuthUser } from '../common/types/auth-user';
 import { accentInsensitiveRegex } from '../common/utils/accent-insensitive-regex';
 import { escapeRegex } from '../common/utils/escape-regex';
-import { FilesService, GridFile, UploadInput } from '../files/files.service';
+import { CompleteUploadDto, CreateUploadDto } from '../files/dto/upload.dto';
+import {
+  FilesService,
+  OpenedFile,
+  StoredFile,
+  UploadInput,
+  UploadTicket,
+} from '../files/files.service';
 import { UserDocument } from '../users/schemas/user.schema';
 import { UsersService } from '../users/users.service';
 import { isTerminal } from '../workflow/workflow.rules';
@@ -65,6 +71,10 @@ const invalidRef = (field: string) =>
     `Invalid ${field}`,
     { field },
   );
+
+/** Blob prefix of a thesis's manuscripts. */
+const manuscriptScope = (thesis: ThesisDocument) =>
+  `manuscripts/${thesis._id.toHexString()}`;
 
 const thesisNotFound = () =>
   new AppException(
@@ -352,10 +362,50 @@ export class ThesesService {
     return student;
   }
 
-  /** New manuscript version (PDF). Coordinator or the owner student; not on closed theses. */
+  /** New manuscript version (PDF) from a multipart upload. Coordinator or the owner student. */
   async addManuscript(
     id: string,
     file: UploadInput | undefined,
+    user: AuthUser,
+  ): Promise<ThesisDocument> {
+    const thesis = await this.findWritable(id, user);
+    const stored = await this.files.upload(
+      file,
+      { ownerId: user.id, thesisId: id, kind: FileKind.MANUSCRIPT },
+      ['pdf'],
+    );
+    return this.attachManuscript(thesis, stored, user);
+  }
+
+  /** Direct upload, step 1: same authorization as the multipart route. */
+  async createManuscriptUpload(
+    id: string,
+    dto: CreateUploadDto,
+    user: AuthUser,
+  ): Promise<UploadTicket> {
+    const thesis = await this.findWritable(id, user);
+    return this.files.createUpload(manuscriptScope(thesis), dto, ['pdf']);
+  }
+
+  /** Direct upload, step 3: re-authorizes, verifies the blob, then adds the version. */
+  async completeManuscriptUpload(
+    id: string,
+    dto: CompleteUploadDto,
+    user: AuthUser,
+  ): Promise<ThesisDocument> {
+    const thesis = await this.findWritable(id, user);
+    const stored = await this.files.completeUpload(
+      manuscriptScope(thesis),
+      dto,
+      { ownerId: user.id, thesisId: id, kind: FileKind.MANUSCRIPT },
+      ['pdf'],
+    );
+    return this.attachManuscript(thesis, stored, user);
+  }
+
+  /** Coordinator or the owner student; not on closed theses. */
+  private async findWritable(
+    id: string,
     user: AuthUser,
   ): Promise<ThesisDocument> {
     const thesis = await this.findById(id);
@@ -368,11 +418,14 @@ export class ThesesService {
         'Thesis is closed',
       );
     }
-    const stored = await this.files.upload(
-      file,
-      { ownerId: user.id, thesisId: id, kind: FileKind.MANUSCRIPT },
-      ['pdf'],
-    );
+    return thesis;
+  }
+
+  private async attachManuscript(
+    thesis: ThesisDocument,
+    stored: StoredFile,
+    user: AuthUser,
+  ): Promise<ThesisDocument> {
     const fileId = new Types.ObjectId(stored.id);
     // Optimistic on manuscriptSeq (a concurrent upload makes this miss instead of duplicating a
     // version) and guarded against the thesis having been closed since it was read.
@@ -420,7 +473,7 @@ export class ThesesService {
     id: string,
     fileId: string,
     user: AuthUser,
-  ): Promise<{ info: GridFile; stream: Readable }> {
+  ): Promise<OpenedFile> {
     const thesis = await this.findById(id);
     const allowed =
       canReadThesis(user, thesis) ||

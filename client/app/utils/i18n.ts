@@ -120,6 +120,7 @@ export const ERROR_MESSAGES: Record<ErrorCode, string> = {
   [ErrorCode.FILE_TOO_LARGE]: 'El archivo supera el máximo de 25 MB.',
   [ErrorCode.FILE_TYPE_NOT_ALLOWED]: 'Tipo de archivo no permitido.',
   [ErrorCode.FILE_NOT_FOUND]: 'El archivo no existe.',
+  [ErrorCode.FILE_UPLOAD_INVALID]: 'La carga del archivo no es válida o expiró. Vuelva a seleccionar el archivo e intente de nuevo.',
   [ErrorCode.MANUSCRIPT_CONFLICT]: 'Otra versión del manuscrito se subió al mismo tiempo. Intente de nuevo.',
   [ErrorCode.ASSIGNMENT_NOT_FOUND]: 'La designación no existe.',
   [ErrorCode.ASSIGNMENT_INVALID_COMPOSITION]: 'La conformación del jurado no cumple las reglas.',
@@ -156,6 +157,8 @@ export const ERROR_MESSAGES: Record<ErrorCode, string> = {
 /** Client-only codes. */
 const EXTRA_ERROR_MESSAGES: Record<string, string> = {
   NETWORK_ERROR: 'No se pudo conectar con el servidor.',
+  UPLOAD_FAILED: 'No se pudo subir el archivo al almacenamiento. Intente de nuevo.',
+  DOWNLOAD_FAILED: 'No se pudo descargar el archivo. Intente de nuevo.',
 };
 
 export function errorText(code: string | undefined, fallback?: string): string {

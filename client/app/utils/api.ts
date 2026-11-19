@@ -37,6 +37,7 @@ import type {
   User,
 } from '~/types/api';
 import { apiUrl, request } from './http';
+import { uploadFile, type UploadProgress } from './upload';
 import {
   isMocked,
   mockDefenses,
@@ -86,11 +87,9 @@ export const thesesApi = {
   get: (id: string) => request<Thesis>(`/theses/${id}`),
   create: (body: CreateThesisInput) => request<Thesis>('/theses', { method: 'POST', body }),
   update: (id: string, body: Partial<CreateThesisInput>) => request<Thesis>(`/theses/${id}`, { method: 'PATCH', body }),
-  uploadManuscript: (id: string, file: File) => {
-    const form = new FormData();
-    form.append('file', file);
-    return request<Thesis>(`/theses/${id}/manuscripts`, { method: 'POST', body: form });
-  },
+  /** Direct-to-Blob in production, multipart locally (see utils/upload.ts). */
+  uploadManuscript: (id: string, file: File, onProgress?: UploadProgress) =>
+    uploadFile<Thesis>(`/theses/${id}/manuscripts`, file, onProgress),
   manuscriptPath: (id: string, fileId: string) => `/theses/${id}/manuscripts/${fileId}`,
   graph: (id: string) => request<GraphView>(`/theses/${id}/graph`),
   /** Coordinator: REVISIONS_IN_PROGRESS → READY_FOR_DEFENSE once no feedback is unresolved. */
@@ -166,11 +165,9 @@ export const evaluationsApi = {
       : request(`/assignments/${assignmentId}/evaluation`, { method: 'PUT', body }),
   submit: (assignmentId: string): Promise<Evaluation> =>
     isMocked('evaluations') ? mockEvaluations.submit(assignmentId) : request(`/assignments/${assignmentId}/evaluation/submit`, { method: 'POST' }),
-  uploadCorrection: (evaluationId: string, file: File): Promise<Evaluation> => {
+  uploadCorrection: (evaluationId: string, file: File, onProgress?: UploadProgress): Promise<Evaluation> => {
     if (isMocked('evaluations')) return mockEvaluations.uploadCorrection(evaluationId, file);
-    const form = new FormData();
-    form.append('file', file);
-    return request(`/evaluations/${evaluationId}/corrections`, { method: 'POST', body: form });
+    return uploadFile<Evaluation>(`/evaluations/${evaluationId}/corrections`, file, onProgress);
   },
   get: (id: string): Promise<Evaluation> => request(`/evaluations/${id}`),
   filePath: (id: string, fileId: string) => `/evaluations/${id}/files/${fileId}`,

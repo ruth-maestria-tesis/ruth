@@ -45,6 +45,8 @@ export enum ErrorCode {
   FILE_TOO_LARGE = 'FILE_TOO_LARGE',
   FILE_TYPE_NOT_ALLOWED = 'FILE_TYPE_NOT_ALLOWED',
   FILE_NOT_FOUND = 'FILE_NOT_FOUND',
+  /** Direct (Blob) upload: unknown, foreign, reused or mismatched pathname, or direct uploads disabled. */
+  FILE_UPLOAD_INVALID = 'FILE_UPLOAD_INVALID',
   MANUSCRIPT_CONFLICT = 'MANUSCRIPT_CONFLICT',
   // assignments
   ASSIGNMENT_NOT_FOUND = 'ASSIGNMENT_NOT_FOUND',

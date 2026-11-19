@@ -33,4 +33,26 @@ describe('envValidationSchema', () => {
     expect(value.EXTERNAL_TOKEN_TTL_DAYS).toBe(60);
     expect(value.EXTERNAL_SESSION_TTL_SECONDS).toBe(14400);
   });
+
+  it('defaults STORAGE_DRIVER to gridfs and needs the Blob token for vercel-blob', () => {
+    const env = { ...base, NODE_ENV: 'test' };
+    const value = envValidationSchema.validate(env).value as {
+      STORAGE_DRIVER: string;
+    };
+    expect(value.STORAGE_DRIVER).toBe('gridfs');
+    expect(
+      envValidationSchema.validate({ ...env, STORAGE_DRIVER: 'vercel-blob' })
+        .error?.message,
+    ).toContain('"BLOB_READ_WRITE_TOKEN" is required');
+    expect(
+      envValidationSchema.validate({
+        ...env,
+        STORAGE_DRIVER: 'vercel-blob',
+        BLOB_READ_WRITE_TOKEN: 'vercel_blob_rw_x',
+      }).error,
+    ).toBeUndefined();
+    expect(
+      envValidationSchema.validate({ ...env, STORAGE_DRIVER: 's3' }).error,
+    ).toBeDefined();
+  });
 });

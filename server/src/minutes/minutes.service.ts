@@ -10,13 +10,12 @@ import {
   ThesisStatus,
 } from '@thesis/shared';
 import { Model, Types } from 'mongoose';
-import { Readable } from 'node:stream';
 import { CatalogsService } from '../catalogs/catalogs.service';
 import { AppException } from '../common/errors/app.exception';
 import { actorFrom } from '../common/types/actor';
 import type { AuthUser } from '../common/types/auth-user';
 import { DefensesService } from '../defenses/defenses.service';
-import { FilesService, GridFile } from '../files/files.service';
+import { FilesService, OpenedFile } from '../files/files.service';
 import { Counter } from '../theses/schemas/counter.schema';
 import { ThesisDocument } from '../theses/schemas/thesis.schema';
 import { ThesesService } from '../theses/theses.service';
@@ -295,10 +294,7 @@ export class MinutesService {
     return this.toView(updated);
   }
 
-  async openPdf(
-    id: string,
-    user: AuthUser,
-  ): Promise<{ info: GridFile; stream: Readable }> {
+  async openPdf(id: string, user: AuthUser): Promise<OpenedFile> {
     const { minutes } = await this.findReadable(id, user);
     if (minutes.status !== MinutesStatus.SEALED || !minutes.pdfFileId) {
       throw err(

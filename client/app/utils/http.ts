@@ -216,10 +216,27 @@ export async function request<T>(path: string, opts: RequestOptions = {}): Promi
   return (text ? JSON.parse(text) : undefined) as T;
 }
 
-/** Downloads an authenticated file as an object URL (for the PDF viewer or a save). */
+/**
+ * Downloads an authenticated file as an object URL (for the PDF viewer or a save).
+ * `?as=url` makes the API answer `{ url }` (a 5-minute presigned Vercel Blob URL) for blob-stored
+ * files instead of a 302: a credentialed fetch cannot follow a redirect to the Blob host
+ * (it answers `Access-Control-Allow-Origin: *`), so the bytes are fetched from that URL without
+ * cookies. GridFS files are streamed by the API as before, whatever the query.
+ */
 export async function fetchBlobUrl(path: string): Promise<string> {
-  const res = await request<Response>(path, { raw: true });
-  return URL.createObjectURL(await res.blob());
+  const res = await request<Response>(path, { raw: true, query: { as: 'url' } });
+  if (!res.headers.get('content-type')?.includes('application/json')) {
+    return URL.createObjectURL(await res.blob());
+  }
+  const { url } = (await res.json()) as { url: string };
+  let file: Response;
+  try {
+    file = await fetch(url, { credentials: 'omit' });
+  } catch {
+    throw new ApiError(0, 'DOWNLOAD_FAILED', 'Download from storage failed');
+  }
+  if (!file.ok) throw new ApiError(file.status, 'DOWNLOAD_FAILED', 'Download from storage failed');
+  return URL.createObjectURL(await file.blob());
 }
 
 export async function downloadFile(path: string, fileName: string): Promise<void> {

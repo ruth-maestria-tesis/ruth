@@ -7,8 +7,8 @@ import {
   Param,
   Post,
   Put,
+  Query,
   Res,
-  StreamableFile,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
@@ -22,7 +22,8 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { ParseObjectIdPipe } from '../common/pipes/parse-object-id.pipe';
 import type { AuthUser } from '../common/types/auth-user';
-import { contentDisposition } from '../files/content-disposition';
+import { CompleteUploadDto, CreateUploadDto } from '../files/dto/upload.dto';
+import { fileResponse } from '../files/file-response';
 import { MAX_FILE_BYTES } from '../files/file-type';
 import { SaveEvaluationDto } from './dto/evaluation.dto';
 import { EvaluationsService } from './evaluations.service';
@@ -133,6 +134,31 @@ export class EvaluationsController {
     return this.evaluations.addCorrection(id, file, user);
   }
 
+  /** Direct upload, step 1: `{ strategy: 'DIRECT', clientToken, pathname, expiresAt }` or MULTIPART. */
+  @AllowScoped()
+  @Post('evaluations/:id/corrections/uploads')
+  @HttpCode(200)
+  @Roles(...JURORS)
+  createCorrectionUpload(
+    @Param('id', ParseObjectIdPipe) id: string,
+    @Body() dto: CreateUploadDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.evaluations.createCorrectionUpload(id, dto, user);
+  }
+
+  /** Direct upload, step 3: registers the uploaded blob; same response as the multipart route. */
+  @AllowScoped()
+  @Post('evaluations/:id/corrections/uploads/complete')
+  @Roles(...JURORS)
+  completeCorrectionUpload(
+    @Param('id', ParseObjectIdPipe) id: string,
+    @Body() dto: CompleteUploadDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.evaluations.completeCorrectionUpload(id, dto, user);
+  }
+
   @AllowScoped()
   @Get('evaluations/:id')
   @Roles(...READERS)
@@ -150,19 +176,12 @@ export class EvaluationsController {
   async download(
     @Param('id', ParseObjectIdPipe) id: string,
     @Param('fileId', ParseObjectIdPipe) fileId: string,
+    @Query('as') as: string | undefined,
     @CurrentUser() user: AuthUser,
     @Ip() ip: string,
-  ): Promise<StreamableFile> {
-    const { info, stream } = await this.evaluations.openCorrection(
-      id,
-      fileId,
-      user,
-      ip,
-    );
-    return new StreamableFile(stream, {
-      type: info.metadata?.mimeType ?? 'application/octet-stream',
-      disposition: contentDisposition(info.filename),
-      length: info.length,
-    });
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const opened = await this.evaluations.openCorrection(id, fileId, user, ip);
+    return fileResponse(opened, res, { asUrl: as === 'url' });
   }
 }
