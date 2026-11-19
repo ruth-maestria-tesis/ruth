@@ -1,0 +1,22 @@
+export enum FeedbackChapter {
+  INTRODUCTION = 'INTRODUCTION',
+  THEORETICAL_FRAMEWORK = 'THEORETICAL_FRAMEWORK',
+  METHODOLOGY = 'METHODOLOGY',
+  RESULTS = 'RESULTS',
+  CONCLUSIONS = 'CONCLUSIONS',
+  OTHER = 'OTHER',
+}
+
+/** RN-06 lifecycle. */
+export enum FeedbackStatus {
+  PENDING = 'PENDING',
+  ADDRESSED = 'ADDRESSED',
+  RESOLVED = 'RESOLVED',
+}
+
+export enum FeedbackAction {
+  ADDRESS = 'ADDRESS',
+  RESOLVE = 'RESOLVE',
+  REOPEN = 'REOPEN',
+  COMMENT = 'COMMENT',
+}

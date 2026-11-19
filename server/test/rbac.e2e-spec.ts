@@ -2,8 +2,11 @@ import { INestApplication } from '@nestjs/common';
 import { Role } from '@thesis/shared';
 import request from 'supertest';
 import {
+  assignJury,
   closeTestApp,
+  createAssignableThesis,
   createCatalog,
+  createExternalJuror,
   createTestApp,
   createThesis,
   createUser,
@@ -28,10 +31,15 @@ const ALL: Role[] = [
 ];
 const WITH_EXTERNAL: Role[] = [...ALL, Role.EXTERNAL_JUROR];
 const MANAGERS: Role[] = [Role.ADMIN, Role.COORDINATOR];
+const JURORS: Role[] = [Role.INTERNAL_JUROR, Role.EXTERNAL_JUROR];
 const ID = '65a1b2c3d4e5f60718293a4b';
 
-/** RBAC matrix (mapa-navegacion-rbac.md §3) for stage-2 endpoints. */
-const matrix = (thesisId: string): Row[] => [
+/** RBAC matrix (mapa-navegacion-rbac.md §3) for stage-2 and stage-3 endpoints. */
+const matrix = (
+  thesisId: string,
+  juryThesisId: string,
+  assignmentId: string,
+): Row[] => [
   { method: 'get', path: '/api/programs', allowed: WITH_EXTERNAL },
   { method: 'post', path: '/api/programs', allowed: MANAGERS },
   { method: 'patch', path: `/api/programs/${ID}`, allowed: MANAGERS },
@@ -47,7 +55,7 @@ const matrix = (thesisId: string): Row[] => [
   {
     method: 'get',
     path: `/api/theses/${thesisId}`,
-    allowed: [Role.ADMIN, Role.COORDINATOR, Role.STUDENT],
+    allowed: [Role.ADMIN, Role.COORDINATOR, Role.STUDENT, ...JURORS],
   },
   {
     method: 'patch',
@@ -62,11 +70,55 @@ const matrix = (thesisId: string): Row[] => [
   {
     method: 'get',
     path: `/api/theses/${thesisId}/manuscripts/${ID}`,
-    allowed: [Role.ADMIN, Role.COORDINATOR, Role.STUDENT],
+    allowed: [Role.ADMIN, Role.COORDINATOR, Role.STUDENT, ...JURORS],
+  },
+  // Stage 3: settings and assignments.
+  { method: 'get', path: '/api/settings', allowed: MANAGERS },
+  { method: 'patch', path: '/api/settings', allowed: [Role.ADMIN] },
+  {
+    method: 'post',
+    path: `/api/theses/${juryThesisId}/assignments`,
+    allowed: [Role.COORDINATOR],
+  },
+  {
+    method: 'get',
+    path: `/api/theses/${juryThesisId}/assignments`,
+    allowed: MANAGERS,
+  },
+  {
+    method: 'post',
+    path: `/api/theses/${juryThesisId}/assignments/replace`,
+    allowed: [Role.COORDINATOR],
+  },
+  {
+    method: 'post',
+    path: '/api/assignments/validate',
+    allowed: [Role.COORDINATOR],
+  },
+  { method: 'get', path: '/api/assignments/mine', allowed: JURORS },
+  {
+    method: 'get',
+    path: `/api/assignments/${assignmentId}`,
+    allowed: [...MANAGERS, ...JURORS],
+  },
+  {
+    method: 'post',
+    path: `/api/assignments/${assignmentId}/accept`,
+    allowed: JURORS,
+  },
+  {
+    method: 'post',
+    path: `/api/assignments/${assignmentId}/decline`,
+    allowed: JURORS,
+  },
+  {
+    method: 'post',
+    path: `/api/assignments/${assignmentId}/external-link`,
+    allowed: [Role.COORDINATOR],
   },
 ];
 
-describe('RBAC matrix — stage 2 (e2e)', () => {
+describe('RBAC matrix — stages 2-3 (e2e)', () => {
   let app: INestApplication;
   const agents = new Map<Role, TestAgent>();
   let rows: Row[];
@@ -83,7 +135,17 @@ describe('RBAC matrix — stage 2 (e2e)', () => {
       );
     }
     const thesis = await createThesis(app, await createCatalog(app));
-    rows = matrix(thesis.id as string);
+    // The matrix agents are not on this jury: their accept/decline get 404 (no state change).
+    const juryThesis = await createAssignableThesis(app);
+    const jury = await assignJury(app, juryThesis.id as string, [
+      (await createUser(app, { roles: [Role.INTERNAL_JUROR] })).id as string,
+      (await createExternalJuror(app)).id as string,
+    ]);
+    rows = matrix(
+      thesis.id as string,
+      juryThesis.id as string,
+      jury.assignments[0].id,
+    );
   });
   afterAll(() => closeTestApp(app));
 

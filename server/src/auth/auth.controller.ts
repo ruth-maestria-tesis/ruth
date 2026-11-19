@@ -24,6 +24,8 @@ import {
 import { AuthService } from './auth.service';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { LoginDto } from './dto/login.dto';
+import { ValidateExternalTokenDto } from './dto/validate-external-token.dto';
+import { ExternalAuthService } from './external-auth.service';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -32,6 +34,7 @@ export class AuthController {
     private readonly auth: AuthService,
     private readonly users: UsersService,
     private readonly config: ConfigService,
+    private readonly external: ExternalAuthService,
   ) {}
 
   @Public()
@@ -45,6 +48,25 @@ export class AuthController {
     const session = await this.auth.login(dto.email, dto.password);
     this.setCookies(res, session.accessToken, session.refreshToken);
     return { user: session.user };
+  }
+
+  /** RF-J14: the external juror's link token → access cookie scoped to one assignment. */
+  @Public()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('external/validate-token')
+  @HttpCode(200)
+  async validateExternalToken(
+    @Body() dto: ValidateExternalTokenDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const session = await this.external.exchange(dto.token);
+    res.cookie(ACCESS_COOKIE, session.accessToken, {
+      ...this.cookieOptions('/'),
+      maxAge: this.external.sessionTtlSeconds * 1000,
+    });
+    // No refresh for external sessions; an institutional one in this browser must not linger.
+    res.clearCookie(REFRESH_COOKIE, this.cookieOptions(REFRESH_COOKIE_PATH));
+    return { user: session.user, assignmentId: session.assignmentId };
   }
 
   @Public()

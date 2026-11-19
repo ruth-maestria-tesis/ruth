@@ -3,6 +3,7 @@ import type { CookieOptions, Response } from 'express';
 import { UsersService } from '../users/users.service';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { ExternalAuthService } from './external-auth.service';
 
 async function cookieOptionsFor(
   env: Record<string, string>,
@@ -17,7 +18,12 @@ async function cookieOptionsFor(
       .fn()
       .mockResolvedValue({ user: {}, accessToken: 'a', refreshToken: 'r' }),
   } as unknown as AuthService;
-  const controller = new AuthController(auth, {} as UsersService, config);
+  const controller = new AuthController(
+    auth,
+    {} as UsersService,
+    config,
+    {} as ExternalAuthService,
+  );
   const cookie = jest.fn<void, [string, string, CookieOptions]>();
   await controller.login({ email: 'x@test.edu.co', password: 'p' }, {
     cookie,

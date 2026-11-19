@@ -4,3 +4,6 @@ export * from './error-codes';
 export * from './catalogs';
 export * from './files';
 export * from './assignments';
+export * from './evaluations';
+export * from './feedback';
+export * from './defenses';
