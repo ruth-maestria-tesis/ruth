@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Role } from '@thesis/shared';
+import { Role, ThesisStatus } from '@thesis/shared';
 import { assignmentsApi } from '~/utils/api';
 import { useUiStore } from '~/stores/ui';
 
@@ -10,6 +10,7 @@ const ui = useUiStore();
 const { assignment, thesis, loading, error, load } = useJurorAssignment(() => String(route.params.id));
 onMounted(load);
 
+const waitingForJury = computed(() => thesis.value?.status === ThesisStatus.JURORS_ASSIGNED);
 const busy = ref(false);
 const declineOpen = ref(false);
 
@@ -66,7 +67,11 @@ async function decline(reason: string) {
 
       <template v-else>
         <CorrectedDocumentCard :assignment="assignment" :thesis="thesis" />
-        <EvaluationForm :assignment="assignment" />
+        <!-- The thesis moves to UNDER_EVALUATION only when both primary jurors have accepted. -->
+        <v-alert v-if="waitingForJury" type="info" variant="tonal" class="mb-4">
+          La evaluación se habilita cuando el otro jurado acepte su designación. Mientras tanto puede descargar el documento completo.
+        </v-alert>
+        <EvaluationForm v-else :assignment="assignment" />
       </template>
     </template>
   </div>

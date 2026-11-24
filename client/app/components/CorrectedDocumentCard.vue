@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { EvaluationStatus, ThesisStatus } from '@thesis/shared';
+import { ThesisStatus } from '@thesis/shared';
 import type { Assignment, Evaluation, Thesis } from '~/types/api';
 import { evaluationsApi, thesesApi } from '~/utils/api';
 import { downloadFile } from '~/utils/http';
@@ -25,9 +25,9 @@ const progress = ref<number | null>(null);
 const manuscript = computed(() => props.thesis?.manuscripts.find((m) => m.fileId === props.thesis?.currentManuscriptId));
 const pdfPath = computed(() => (props.thesis && manuscript.value ? thesesApi.manuscriptPath(props.thesis.id, manuscript.value.fileId) : null));
 const files = computed(() => [...(evaluation.value?.correctionFiles ?? [])].reverse());
-const canUpload = computed(
-  () => !evaluation.value || evaluation.value.status === EvaluationStatus.DRAFT || OPEN_AFTER_SUBMIT.includes(props.thesis?.status ?? ''),
-);
+/** The API only takes corrections while the thesis is under evaluation or revision (also for drafts). */
+const canUpload = computed(() => OPEN_AFTER_SUBMIT.includes(props.thesis?.status ?? ''));
+const notYetOpen = computed(() => props.thesis?.status === ThesisStatus.JURORS_ASSIGNED);
 /** The student uploaded a newer manuscript after the juror's last corrected document. */
 const newerManuscript = computed(() => {
   const last = files.value[0]?.manuscriptVersion;
@@ -113,6 +113,9 @@ async function upload() {
           />
           <v-btn color="primary" variant="flat" height="48" :disabled="!file" :loading="uploading" @click="upload">Subir corrección</v-btn>
         </div>
+        <v-alert v-else-if="notYetOpen" type="info" variant="tonal" density="compact">
+          Podrá subir el documento corregido cuando ambos jurados hayan aceptado la designación.
+        </v-alert>
         <v-alert v-else type="warning" variant="tonal" density="compact">La etapa de evaluación y subsanación terminó; ya no se reciben documentos corregidos.</v-alert>
         <v-progress-linear v-if="progress !== null" :model-value="progress" color="primary" height="6" rounded class="mt-2" />
 
