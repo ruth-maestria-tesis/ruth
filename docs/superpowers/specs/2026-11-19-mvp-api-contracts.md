@@ -1,6 +1,6 @@
 # MVP API contracts — remaining server modules
 
-Date: 2026-11-19. Binding for the server modules still to build and for the Nuxt client.
+Date: 2026-11-19 (updated 2026-11-23 with the tutor's adjustments, §15). Binding for the server modules still to build and for the Nuxt client.
 Base: `docs/superpowers/specs/2026-11-17-server-design.md` (§4 status machine, §4.1 RN-08, §5 data model, §6 rules, §8 API). This file only **narrows and fixes** what the MVP builds; when they disagree, this file wins.
 
 ## Conventions (all modules)
@@ -30,7 +30,7 @@ View `EvaluationView`:
 { id, assignmentId, thesisId, jurorId, juror: { id, firstName, lastName, isUnicordoba },
   assignmentType: 'PRIMARY'|'TIEBREAKER',
   rubric: { methodology: 1-5, relevance: 1-5, writingQuality: 1-5 } | null, score: number | null,
-  verdict: EvaluationVerdict | null, comments: string, correctionFiles: { fileId, fileName, uploadedAt }[],
+  verdict: EvaluationVerdict | null, comments: string, correctionFiles: { fileId, fileName, uploadedAt, manuscriptVersion? }[],
   status, submittedAt?, studentFirstViewedAt?, studentFirstDownloadedAt? }
 ```
 
@@ -40,7 +40,7 @@ View `EvaluationView`:
 | `GET /assignments/:id/evaluation` | assignment owner | Their evaluation, or `null` (204 is not used) |
 | `PUT /assignments/:id/evaluation` | assignment owner, assignment `ACCEPTED` | Draft upsert `{ rubric?, verdict?, comments? }` → `EvaluationView`. 409 `EVALUATION_LOCKED` after submit; 409 `EVALUATION_NOT_ALLOWED` if not ACCEPTED |
 | `POST /assignments/:id/evaluation/submit` | assignment owner | Requires a full rubric (PRIMARY), a verdict and comments of at least 20 chars. Otherwise 400 `EVALUATION_INCOMPLETE`. Then runs RN-08 (below) |
-| `POST /evaluations/:id/corrections` | the author, while DRAFT | multipart `file` (pdf/doc/docx, ≤25 MB) → `EvaluationView`. Large files: the direct upload of §14 (`/corrections/uploads`, `/corrections/uploads/complete`) |
+| `POST /evaluations/:id/corrections` | the author, while DRAFT, or after submit while the thesis is `UNDER_EVALUATION`, `IN_DISPUTE` or `REVISIONS_IN_PROGRESS` (else 409 `EVALUATION_LOCKED`) | The corrected document: multipart `file` (pdf/doc/docx, ≤25 MB) → `EvaluationView`. Each file records `manuscriptVersion`, the thesis' current manuscript version at upload time. Large files: the direct upload of §14 (`/corrections/uploads`, `/corrections/uploads/complete`) |
 | `GET /evaluations/:id` | as for the list | Logs `VIEW` when a STUDENT reads it |
 | `GET /evaluations/:id/files/:fileId` | as for the list | Download; logs `DOWNLOAD` for a STUDENT |
 | `POST /theses/:id/evaluation-outcome/reconcile` | COORDINATOR, ADMIN | No body. Re-applies RN-08 from the stored evaluations (retry after a failed transition). Idempotent. 200 `{ thesisId, status, changed }`, where `changed` is true when this call moved the thesis. 409 `EVALUATION_NOT_COMPLETE` while neither both PRIMARY nor the TIEBREAKER evaluation is SUBMITTED |
@@ -74,7 +74,7 @@ RN-08 runs after a submit:
 ## 3. feedback (CU-06, RN-06) — module `feedback`
 
 Enums:
-- `FeedbackChapter`: `INTRODUCTION`, `THEORETICAL_FRAMEWORK`, `METHODOLOGY`, `RESULTS`, `CONCLUSIONS`, `OTHER`.
+- `FeedbackChapter`: `GENERAL`, plus the legacy `INTRODUCTION`, `THEORETICAL_FRAMEWORK`, `METHODOLOGY`, `RESULTS`, `CONCLUSIONS`, `OTHER`. Since 2026-11-23 feedback covers the whole document in one section: new items are `GENERAL` and the client no longer asks for or shows a chapter. The legacy values remain only so older items stay valid.
 - `FeedbackStatus`: `PENDING`, `ADDRESSED`, `RESOLVED`.
 - `FeedbackAction`: `ADDRESS`, `RESOLVE`, `REOPEN`, `COMMENT`.
 
@@ -88,7 +88,7 @@ View `FeedbackItemView`:
 |---|---|---|
 | `GET /theses/:id/feedback?chapter=&status=` | COORDINATOR, ADMIN, an active juror of the thesis (ACCEPTED), STUDENT of the thesis | `FeedbackItemView[]`, ordered by chapter and then createdAt |
 | `GET /theses/:id/feedback/summary` | same | `{ total, byStatus: {PENDING,ADDRESSED,RESOLVED}, byChapter: { [chapter]: {total, resolved} } }` |
-| `POST /theses/:id/feedback` | a juror with an ACCEPTED assignment | `{ chapter, reference?, content }` → `PENDING` |
+| `POST /theses/:id/feedback` | a juror with an ACCEPTED assignment | `{ content, chapter?, reference? }` → `PENDING`. `chapter` defaults to `GENERAL`; `content` up to 20,000 characters (a whole-document observation) |
 | `POST /feedback/:id/address` | STUDENT of the thesis, item `PENDING` | `{ content }` → `ADDRESSED` |
 | `POST /feedback/:id/resolve` | author juror, item `ADDRESSED` | `{ content? }` → `RESOLVED` |
 | `POST /feedback/:id/reopen` | author juror, item `ADDRESSED` | `{ content }` → `PENDING` |
@@ -316,7 +316,7 @@ Vercel functions cap request and response bodies at 4.5 MB, so in production the
 - File metadata always stays in Mongo, in `files.files` (the GridFS files collection): `filename`, `length`, `metadata.{ ownerId, thesisId, kind, mimeType, sha256, seedTag? }`, plus `metadata.storage: 'gridfs' | 'blob'` (missing = `gridfs`) and `metadata.blobPathname` for blob files. A unique partial index on `metadata.blobPathname` allows one registration per blob.
 - Buffer uploads (the multipart routes, the sealed minutes PDF, the seed) always go to GridFS, in both modes. Only direct uploads go to Blob. Files already in GridFS (the demo seed) keep working after the switch.
 
-**Direct upload** (manuscripts: `base = /theses/:id/manuscripts`, COORDINATOR or the owner STUDENT, thesis not closed; corrections: `base = /evaluations/:id/corrections`, the author juror within the session scope, evaluation DRAFT). Each step runs the same authorization as the multipart `POST base`.
+**Direct upload** (manuscripts: `base = /theses/:id/manuscripts`, COORDINATOR or the owner STUDENT, thesis not closed; corrections: `base = /evaluations/:id/corrections`, the author juror within the session scope, evaluation DRAFT or submitted while the thesis is under evaluation, in dispute or in revisions — see §1). Each step runs the same authorization as the multipart `POST base`.
 
 | Step | Request | Response |
 |---|---|---|
@@ -340,3 +340,28 @@ Vercel functions cap request and response bodies at 4.5 MB, so in production the
 - Blob file: `302` to a presigned GET URL valid 5 minutes and limited to that pathname, with `Cache-Control: no-store`. The Blob host sends `Content-Disposition: inline; filename="<uuid>.<ext>"` (the SDK cannot set it per URL).
 - Blob file with `?as=url`: 200 `{ url, expiresAt }`, `Cache-Control: no-store`. The SPA uses this: a `fetch` with `credentials: 'include'` cannot follow a redirect to the Blob host (it answers `Access-Control-Allow-Origin: *`), so the client fetches the URL with `credentials: 'omit'` and keeps showing the PDF from an object URL and saving with the real file name.
 
+## 15. Tutor's adjustments (2026-11-23)
+
+### Juror search per thesis (CU-01)
+| Method & route | Roles | Notes |
+|---|---|---|
+| `GET /theses/:id/juror-candidates?q=` | COORDINATOR | Active faculty (internal and external jurors), filtered by `q` like `GET /users/faculty` (name, email, institution). Returns up to 30 `JurorCandidate`, ranked for this thesis. 404 for an unknown thesis |
+
+`JurorCandidate` = the faculty user fields (`id, firstName, lastName, email, roles, isActive, jurorProfile`) plus:
+- `affinity: string[]`: the juror's `jurorProfile.expertise` terms that match the thesis `keywords`. The match ignores case and accents, and a term matches when it contains, or is contained in, a keyword.
+- `activeAssignments: number`: the juror's active assignments (`isActive`) on any thesis.
+- `conflict: 'PARTY' | 'PREVIOUS_JUROR' | null` (RN-01):
+  - `PARTY`: the juror is the student, advisor or co-advisor of the thesis, or is in `conflictOfInterestUserIds`;
+  - `PREVIOUS_JUROR`: the juror already had an assignment on this thesis.
+
+Order: candidates without a conflict first, then more `affinity`, then fewer `activeAssignments`, then last name and first name. Conflicted candidates stay in the list so the client can show them disabled with the reason. Assigning one is still refused by the CU-01 validation.
+
+### New jurors not yet registered (RF-C14)
+- `newExternal` (CU-01 jurors, replacement and tiebreaker) accepts an optional `isUnicordoba: boolean` for a Universidad de Córdoba professor who is not yet registered. Default `false`.
+- The user is created as today (`EXTERNAL_JUROR`, no password, token access link in `externalLinks`) with `jurorProfile.isUnicordoba` set from the flag.
+- An inline juror with `isUnicordoba: true` counts for RF-C13 (`JUROR_UNICORDOBA_REQUIRED`).
+- The client offers "Registrar jurado nuevo" in both slots.
+
+### Client behaviour tied to these contracts
+- The juror evaluation page does not display the manuscript. It offers "Descargar documento completo (PDF)" (`GET /theses/:id/manuscripts/:fileId`) and the upload of the corrected document (`POST /evaluations/:id/corrections`), with the upload history and the reviewed version.
+- The student sees each juror's corrected documents under the submitted concept, the current one marked, and uploads a new manuscript version through the existing manuscript route.
