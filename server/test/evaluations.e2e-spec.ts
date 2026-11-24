@@ -201,9 +201,33 @@ describe('Evaluations — CU-02 / RN-08 (e2e)', () => {
       .post(`/api/assignments/${a1}/evaluation/submit`)
       .expect(409);
     expect(again.body.code).toBe('EVALUATION_LOCKED');
+    // The corrected document can still be uploaded while the thesis is under evaluation.
     const upload = await juror1
       .post(`/api/evaluations/${sub.body.id}/corrections`)
-      .attach('file', PDF_BYTES, 'correcciones.pdf')
+      .attach('file', PDF_BYTES, 'documento-corregido.pdf')
+      .expect(201);
+    expect(upload.body.status).toBe('SUBMITTED');
+    expect(upload.body.correctionFiles).toEqual([
+      expect.objectContaining({
+        fileName: 'documento-corregido.pdf',
+        manuscriptVersion: 1,
+      }),
+    ]);
+  });
+
+  it('closes corrected-document uploads once the thesis leaves evaluation/revision', async () => {
+    const { a1, a2, juror1, juror2 } = await setup();
+    const sub = await juror1
+      .post(`/api/assignments/${a1}/evaluation/submit`)
+      .send({ ...FULL, verdict: EvaluationVerdict.APPROVED_FOR_DEFENSE })
+      .expect(200);
+    await juror2
+      .post(`/api/assignments/${a2}/evaluation/submit`)
+      .send({ ...FULL, verdict: EvaluationVerdict.APPROVED_FOR_DEFENSE })
+      .expect(200);
+    const upload = await juror1
+      .post(`/api/evaluations/${sub.body.id}/corrections`)
+      .attach('file', PDF_BYTES, 'tarde.pdf')
       .expect(409);
     expect(upload.body.code).toBe('EVALUATION_LOCKED');
   });

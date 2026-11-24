@@ -283,6 +283,8 @@ export interface FileRef {
   fileId: string;
   fileName: string;
   uploadedAt: string;
+  /** Correction files: manuscript version the juror reviewed. */
+  manuscriptVersion?: number;
 }
 
 export interface Evaluation {

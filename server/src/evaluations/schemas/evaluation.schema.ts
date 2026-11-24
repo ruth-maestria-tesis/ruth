@@ -33,6 +33,10 @@ export class CorrectionFile {
 
   @Prop({ required: true })
   uploadedAt!: Date;
+
+  /** Manuscript version the juror reviewed (current version at upload time). */
+  @Prop()
+  manuscriptVersion?: number;
 }
 export const CorrectionFileSchema =
   SchemaFactory.createForClass(CorrectionFile);
