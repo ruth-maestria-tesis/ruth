@@ -46,7 +46,7 @@ onBeforeUnmount(() => clearInterval(timer));
 <template>
   <v-menu v-model="open" :close-on-content-click="false" location="bottom end" max-width="380">
     <template #activator="{ props }">
-      <v-btn v-bind="props" icon variant="text" color="white" aria-label="Notificaciones">
+      <v-btn v-bind="props" icon variant="text" aria-label="Notificaciones">
         <v-badge :content="unread" :model-value="unread > 0" color="secondary">
           <v-icon icon="mdi-bell-outline" />
         </v-badge>

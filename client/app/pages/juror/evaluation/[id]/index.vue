@@ -48,7 +48,7 @@ async function decline(reason: string) {
     <template v-if="assignment">
       <JurorAssignmentNav :assignment="assignment" />
 
-      <v-card v-if="assignment.status === 'PENDING'" class="pa-5" style="border-top: 4px solid #006837">
+      <v-card v-if="assignment.status === 'PENDING'" class="pa-5 uc-accent-top">
         <div class="text-h2-section mb-2">Designación pendiente de respuesta</div>
         <p class="text-body-2 mb-4">Al aceptar se habilita la descarga del manuscrito y el formulario de evaluación.</p>
         <v-alert v-if="assignment.thesis?.abstract" type="info" variant="tonal" density="compact" class="mb-4">

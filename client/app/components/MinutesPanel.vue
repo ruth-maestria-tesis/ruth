@@ -182,7 +182,7 @@ async function sign() {
 
 <style scoped>
 .brand-seal {
-  width: 56px; height: 56px; border-radius: 50%; border: 3px solid #006837; color: #006837;
+  width: 56px; height: 56px; border-radius: 50%; border: 3px solid rgb(var(--v-theme-primary)); color: rgb(var(--v-theme-primary));
   display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 1.25rem;
 }
 </style>

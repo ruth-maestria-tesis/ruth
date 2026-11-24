@@ -47,17 +47,22 @@ function goExternal() {
 
 <template>
   <div class="d-flex align-center justify-center pa-4" style="min-height: 100vh">
-    <v-card class="login-card overflow-hidden" max-width="960" width="100%" elevation="6">
+    <v-card class="login-card overflow-hidden" max-width="1000" width="100%">
       <v-row no-gutters>
         <v-col cols="12" md="5" class="identity pa-8 d-flex flex-column justify-space-between">
           <div>
-            <div class="brand-logo mb-6">UC</div>
-            <div class="text-h5 font-weight-bold mb-2">Universidad de Córdoba</div>
-            <div class="text-body-1" style="opacity: 0.9">Vicerrectoría de Investigación y Posgrados</div>
+            <div class="d-flex align-center ga-3 mb-10">
+              <div class="brand-logo">R</div>
+              <div>
+                <div class="font-weight-bold" style="font-size: 18px">Ruth</div>
+                <div class="text-caption" style="opacity: 0.7">Universidad de Córdoba</div>
+              </div>
+            </div>
+            <div class="hero-title">Tesis de posgrado,<br /><span class="hero-accent">de la radicación al acta.</span></div>
+            <div class="text-body-2 mt-3" style="opacity: 0.75">Vicerrectoría de Investigación y Posgrados</div>
           </div>
           <div class="mt-8">
-            <div class="text-h6 font-weight-semibold mb-2">Plataforma de Tesis de Posgrado</div>
-            <div class="text-body-2" style="opacity: 0.85">
+            <div class="text-body-2" style="opacity: 0.8">
               Radicación, evaluación por jurados, sustentación y actas con sello criptográfico, con trazabilidad completa.
             </div>
             <div class="text-caption mt-6 font-italic" style="opacity: 0.75">“Por una universidad de excelencia académica”</div>
@@ -110,9 +115,17 @@ function goExternal() {
 </template>
 
 <style scoped>
-.identity { background: linear-gradient(135deg, #004825 0%, #006837 100%); color: white; }
-.brand-logo {
-  width: 56px; height: 56px; background: white; border-radius: 12px; display: flex; align-items: center;
-  justify-content: center; font-weight: 800; color: #006837; font-size: 1.5rem;
+.identity {
+  color: white; position: relative; overflow: hidden;
+  background:
+    radial-gradient(circle at 110% 110%, rgba(155, 107, 255, 0.85) 0%, rgba(108, 71, 255, 0.35) 35%, transparent 60%),
+    radial-gradient(circle at -10% -10%, rgba(34, 195, 181, 0.25) 0%, transparent 45%),
+    #12101F;
 }
+.brand-logo {
+  width: 44px; height: 44px; background: var(--uc-grad); border-radius: 12px; display: flex; align-items: center;
+  justify-content: center; font-weight: 800; color: #fff; font-size: 1.3rem; box-shadow: 0 8px 20px -8px rgba(155, 107, 255, 0.9);
+}
+.hero-title { font-size: 32px; font-weight: 800; line-height: 1.15; letter-spacing: -0.03em; }
+.hero-accent { background: linear-gradient(90deg, #B79CFF, #F0ABFC); -webkit-background-clip: text; background-clip: text; color: transparent; }
 </style>
