@@ -82,7 +82,7 @@ async function upload() {
                 {{ f.fileName }}
               </v-chip>
             </v-sheet>
-            <v-btn class="mt-2" variant="outlined" prepend-icon="mdi-message-text-outline" to="/student/feedback">Ver observaciones por capítulo</v-btn>
+            <v-btn class="mt-2" variant="outlined" prepend-icon="mdi-message-text-outline" to="/student/feedback">Ver observaciones de los jurados</v-btn>
           </v-card>
         </v-col>
         <v-col cols="12" lg="6">

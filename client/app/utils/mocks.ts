@@ -134,11 +134,11 @@ const NEXT: Record<FeedbackAction, { from: FeedbackStatus[]; to: FeedbackStatus 
 
 export const mockFeedback = {
   list: (thesisId: string, chapter?: FeedbackChapter) => delay(feedbackFor(thesisId).filter((i) => !chapter || i.chapter === chapter)),
-  create(thesisId: string, input: { chapter: FeedbackChapter; reference?: string; content: string }, actor: MockActor): Promise<FeedbackItem> {
+  create(thesisId: string, input: { chapter?: FeedbackChapter; reference?: string; content: string }, actor: MockActor): Promise<FeedbackItem> {
     const [firstName, ...rest] = actor.name.split(' ');
     const item: FeedbackItem = {
       id: nextId(), thesisId, jurorId: actor.id, juror: { id: actor.id, firstName: firstName ?? '', lastName: rest.join(' ') },
-      ...input, status: FeedbackStatus.PENDING, replies: [], createdAt: now(),
+      ...input, chapter: input.chapter ?? FeedbackChapter.GENERAL, status: FeedbackStatus.PENDING, replies: [], createdAt: now(),
     };
     feedbackFor(thesisId).push(item);
     return delay(item);

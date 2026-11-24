@@ -190,7 +190,7 @@ export class FeedbackService {
     const doc = await this.model.create({
       thesisId: ctx.thesis._id,
       jurorId: new Types.ObjectId(user.id),
-      chapter: dto.chapter,
+      chapter: dto.chapter ?? FeedbackChapter.GENERAL,
       reference: dto.reference || undefined,
       content: dto.content,
       status: FeedbackStatus.PENDING,

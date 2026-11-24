@@ -42,13 +42,18 @@ export class FeedbackItem {
   @Prop({ type: ObjectId, ref: 'User', required: true })
   jurorId!: Types.ObjectId;
 
-  @Prop({ type: String, enum: Object.values(FeedbackChapter), required: true })
+  @Prop({
+    type: String,
+    enum: Object.values(FeedbackChapter),
+    required: true,
+    default: FeedbackChapter.GENERAL,
+  })
   chapter!: FeedbackChapter;
 
   @Prop({ maxlength: 200 })
   reference?: string;
 
-  @Prop({ required: true, maxlength: 5000 })
+  @Prop({ required: true, maxlength: 20000 })
   content!: string;
 
   @Prop({

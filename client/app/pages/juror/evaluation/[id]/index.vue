@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { AssignmentStatus, Role } from '@thesis/shared';
 import { assignmentsApi, thesesApi } from '~/utils/api';
+import { downloadFile } from '~/utils/http';
+import { formatDate } from '~/utils/i18n';
 import { useUiStore } from '~/stores/ui';
 
 definePageMeta({ middleware: 'role', roles: [Role.INTERNAL_JUROR, Role.EXTERNAL_JUROR] });
@@ -13,11 +15,25 @@ onMounted(load);
 const busy = ref(false);
 const declineOpen = ref(false);
 const manuscript = computed(() => thesis.value?.manuscripts.find((m) => m.fileId === thesis.value?.currentManuscriptId));
+const downloading = ref(false);
+/** The manuscript is not shown on screen: the juror downloads the whole PDF. */
 const pdfPath = computed(() =>
   thesis.value?.currentManuscriptId && assignment.value?.status === AssignmentStatus.ACCEPTED
     ? thesesApi.manuscriptPath(thesis.value.id, thesis.value.currentManuscriptId)
     : null,
 );
+
+async function download() {
+  if (!pdfPath.value) return;
+  downloading.value = true;
+  try {
+    await downloadFile(pdfPath.value, manuscript.value?.fileName ?? 'manuscrito.pdf');
+  } catch (e) {
+    ui.error(e);
+  } finally {
+    downloading.value = false;
+  }
+}
 
 async function accept() {
   busy.value = true;
@@ -70,10 +86,21 @@ async function decline(reason: string) {
         Esta designación ya no está activa (<AssignmentStatusChip :status="assignment.status" />).
       </v-alert>
 
-      <div v-else class="eval-split">
-        <PdfViewer :path="pdfPath" :file-name="manuscript?.fileName" />
+      <template v-else>
+        <v-card class="pa-4 mb-4 d-flex flex-wrap align-center ga-3">
+          <v-icon icon="mdi-file-pdf-box" size="40" color="error" />
+          <div>
+            <div class="font-weight-bold">Documento completo del trabajo de grado</div>
+            <div v-if="manuscript" class="text-body-2 text-medium-emphasis">
+              {{ manuscript.fileName }} · versión {{ manuscript.version }} · cargado el {{ formatDate(manuscript.uploadedAt, true) }}
+            </div>
+            <div v-else class="text-body-2 text-medium-emphasis">No hay manuscrito disponible.</div>
+          </div>
+          <v-spacer />
+          <v-btn color="primary" prepend-icon="mdi-download" :disabled="!pdfPath" :loading="downloading" @click="download">Descargar documento completo (PDF)</v-btn>
+        </v-card>
         <EvaluationForm :assignment="assignment" />
-      </div>
+      </template>
     </template>
   </div>
 </template>

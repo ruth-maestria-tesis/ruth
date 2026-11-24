@@ -1,4 +1,9 @@
+/**
+ * Legacy per-chapter split. Feedback now covers the whole document in one block: new items
+ * use GENERAL; the other values remain only so older items stay valid.
+ */
 export enum FeedbackChapter {
+  GENERAL = 'GENERAL',
   INTRODUCTION = 'INTRODUCTION',
   THEORETICAL_FRAMEWORK = 'THEORETICAL_FRAMEWORK',
   METHODOLOGY = 'METHODOLOGY',

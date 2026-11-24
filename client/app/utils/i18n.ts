@@ -7,7 +7,6 @@ import {
   DefenseModality,
   ErrorCode,
   EvaluationVerdict,
-  FeedbackChapter,
   FeedbackStatus,
   JuryViolation,
   MinutesVerdict,
@@ -174,15 +173,6 @@ export const VERDICT_LABELS: Record<EvaluationVerdict, string> = {
   APPROVED_WITH_CHANGES: 'Aprobado con modificaciones',
   REJECTED: 'No aprobado / Rechazado',
   APPROVED: 'Aprobado (dirimente)',
-};
-
-export const CHAPTER_LABELS: Record<FeedbackChapter, string> = {
-  INTRODUCTION: 'Introducción',
-  THEORETICAL_FRAMEWORK: 'Marco teórico',
-  METHODOLOGY: 'Metodología',
-  RESULTS: 'Resultados',
-  CONCLUSIONS: 'Conclusiones',
-  OTHER: 'Otros',
 };
 
 export const FEEDBACK_STATUS_LABELS: Record<FeedbackStatus, string> = {

@@ -185,7 +185,7 @@ const FEEDBACK_ROUTE: Record<FeedbackAction, string> = {
 export const feedbackApi = {
   list: (thesisId: string, chapter?: FeedbackChapter): Promise<FeedbackItem[]> =>
     isMocked('feedback') ? mockFeedback.list(thesisId, chapter) : request(`/theses/${thesisId}/feedback`, { query: { chapter } }),
-  create: (thesisId: string, body: { chapter: FeedbackChapter; reference?: string; content: string }, actor: MockActor): Promise<FeedbackItem> =>
+  create: (thesisId: string, body: { chapter?: FeedbackChapter; reference?: string; content: string }, actor: MockActor): Promise<FeedbackItem> =>
     isMocked('feedback') ? mockFeedback.create(thesisId, body, actor) : request(`/theses/${thesisId}/feedback`, { method: 'POST', body }),
   act: (id: string, action: FeedbackAction, content: string, actor: MockActor): Promise<FeedbackItem> =>
     isMocked('feedback')

@@ -8,12 +8,17 @@ import {
   MaxLength,
 } from 'class-validator';
 
+/** A single observation on the whole document can be long. */
+export const FEEDBACK_CONTENT_MAX = 20000;
+
 const trim = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim() : value;
 
+/** Whole-document observation; `chapter` defaults to GENERAL (no per-section split). */
 export class CreateFeedbackDto {
+  @IsOptional()
   @IsEnum(FeedbackChapter)
-  chapter!: FeedbackChapter;
+  chapter?: FeedbackChapter;
 
   @IsOptional()
   @Transform(trim)
@@ -24,7 +29,7 @@ export class CreateFeedbackDto {
   @Transform(trim)
   @IsString()
   @IsNotEmpty()
-  @MaxLength(5000)
+  @MaxLength(FEEDBACK_CONTENT_MAX)
   content!: string;
 }
 
