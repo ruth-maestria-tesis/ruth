@@ -66,7 +66,7 @@ async function submit() {
           Reemplaza a <strong>{{ fullName(assignment.juror) }}</strong> ({{ isTiebreakerSlot ? 'Jurado dirimente' : `Jurado ${assignment.slot}` }}).
           <span v-if="assignment.declineReason"> Motivo de la declinación: “{{ assignment.declineReason }}”.</span>
         </div>
-        <JurorSelector :key="key" v-model="juror" :label="mode === 'tiebreaker' || isTiebreakerSlot ? 'Tercer evaluador' : 'Nuevo jurado'" :exclude-ids="excludeIds" />
+        <JurorSelector :key="key" v-model="juror" :label="mode === 'tiebreaker' || isTiebreakerSlot ? 'Tercer evaluador' : 'Nuevo jurado'" :exclude-ids="excludeIds" :thesis-id="thesisId" />
         <v-text-field v-model.number="days" type="number" min="1" max="60" label="Plazo de respuesta (días hábiles)" class="mt-2" />
         <v-alert v-if="error" type="error" variant="tonal" density="compact">
           {{ error }}

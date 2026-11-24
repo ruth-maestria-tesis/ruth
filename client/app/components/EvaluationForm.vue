@@ -2,11 +2,10 @@
 import { AssignmentType, EvaluationStatus, EvaluationVerdict } from '@thesis/shared';
 import type { Assignment, Evaluation, Rubric } from '~/types/api';
 import { evaluationsApi } from '~/utils/api';
-import { downloadFile } from '~/utils/http';
 import { VERDICT_LABELS, formatDate } from '~/utils/i18n';
 import { useUiStore } from '~/stores/ui';
 
-/** CU-02: rubric (1–5 ×3), verdict, comments and correction file. Locked once submitted. */
+/** CU-02: rubric (1–5 ×3), verdict and comments. Locked once submitted. The corrected document lives in CorrectedDocumentCard. */
 const props = defineProps<{ assignment: Assignment }>();
 const emit = defineEmits<{ submitted: [evaluation: Evaluation] }>();
 const ui = useUiStore();
@@ -16,11 +15,8 @@ const evaluation = ref<Evaluation | null>(null);
 const rubric = reactive<Rubric>({ methodology: 0, relevance: 0, writingQuality: 0 });
 const verdict = ref<EvaluationVerdict | null>(null);
 const comments = ref('');
-const file = ref<File | File[] | null>(null);
 const loading = ref(true);
 const saving = ref(false);
-/** Direct (Blob) upload progress of the correction file, 0–100; null when not reported. */
-const progress = ref<number | null>(null);
 const confirmOpen = ref(false);
 
 const locked = computed(() => evaluation.value?.status === EvaluationStatus.SUBMITTED);
@@ -74,11 +70,6 @@ async function saveDraft(silent = false): Promise<boolean> {
   saving.value = true;
   try {
     fill(await evaluationsApi.saveDraft(props.assignment.id, props.assignment.thesisId, payload()));
-    const f = Array.isArray(file.value) ? file.value[0] : file.value;
-    if (f && evaluation.value) {
-      fill(await evaluationsApi.uploadCorrection(evaluation.value.id, f, (p) => (progress.value = p)));
-      file.value = null;
-    }
     if (!silent) ui.notify('Borrador guardado.');
     return true;
   } catch (e) {
@@ -86,7 +77,6 @@ async function saveDraft(silent = false): Promise<boolean> {
     return false;
   } finally {
     saving.value = false;
-    progress.value = null;
   }
 }
 
@@ -107,7 +97,7 @@ async function submit() {
 </script>
 
 <template>
-  <v-card class="pa-4 h-100 overflow-y-auto">
+  <v-card class="pa-4">
     <div class="text-h2-section d-flex align-center ga-2 mb-4">
       <v-icon icon="mdi-clipboard-check-outline" color="primary" /> Rúbrica y emisión de concepto (CU-02)
     </div>
@@ -144,30 +134,6 @@ async function submit() {
         persistent-hint
       />
 
-      <div v-if="evaluation?.correctionFiles.length" class="mt-3">
-        <div class="text-meta mb-1">Archivos de corrección</div>
-        <v-chip
-          v-for="f in evaluation.correctionFiles"
-          :key="f.fileId"
-          prepend-icon="mdi-paperclip"
-          class="mr-1 mb-1"
-          variant="outlined"
-          @click="downloadFile(evaluationsApi.filePath(evaluation.id, f.fileId), f.fileName)"
-        >
-          {{ f.fileName }}
-        </v-chip>
-      </div>
-      <v-file-input
-        v-if="!locked"
-        v-model="file"
-        class="mt-3"
-        label="Adjuntar manuscrito con anotaciones (PDF o Word, opcional)"
-        accept=".pdf,.doc,.docx"
-        prepend-icon=""
-        prepend-inner-icon="mdi-paperclip"
-        show-size
-      />
-      <v-progress-linear v-if="progress !== null" :model-value="progress" color="primary" height="6" rounded />
 
       <div v-if="!locked" class="d-flex flex-column ga-2 mt-2">
         <v-btn variant="outlined" :loading="saving" prepend-icon="mdi-content-save-outline" @click="saveDraft()">Guardar borrador</v-btn>

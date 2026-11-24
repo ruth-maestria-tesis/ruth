@@ -52,7 +52,7 @@ function duration(e: HistoryEntry): string {
   const days = Math.max(0, Math.round((new Date(end).getTime() - new Date(e.at).getTime()) / 86_400_000));
   return `${days} día${days === 1 ? '' : 's'}${idx === entries.value.length - 1 ? ' (en curso)' : ''}`;
 }
-const COLORS = { done: '#16A34A', current: '#0284C7', future: '#CBD5E1', skipped: '#E2E8F0' };
+const COLORS = { done: '#12A374', current: '#6C47FF', future: '#B9B4D6', skipped: '#DCD9EC' };
 </script>
 
 <template>
@@ -126,7 +126,7 @@ const COLORS = { done: '#16A34A', current: '#0284C7', future: '#CBD5E1', skipped
 .graph-row { display: flex; align-items: center; overflow-x: auto; padding: 8px 4px 12px; }
 .node {
   display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 128px; padding: 12px 8px;
-  border: 2px solid; border-radius: 12px; background: #fff; cursor: pointer; text-align: center;
+  border: 2px solid; border-radius: 12px; background: rgb(var(--v-theme-surface)); cursor: pointer; text-align: center;
 }
 .node.future, .node.skipped { opacity: 0.6; }
 .node .dot { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }

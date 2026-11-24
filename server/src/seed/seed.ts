@@ -740,7 +740,7 @@ async function buildSeed(
     await addFeedback(
       t,
       J4,
-      FeedbackChapter.METHODOLOGY,
+      FeedbackChapter.GENERAL,
       'Precisar el tamaño de la muestra y el criterio de selección de los textos.',
       'Sección 3.2',
     );
@@ -794,21 +794,21 @@ async function buildSeed(
     const f1 = await addFeedback(
       t,
       J1,
-      FeedbackChapter.THEORETICAL_FRAMEWORK,
+      FeedbackChapter.GENERAL,
       'Incluir referentes recientes (2020-2025) sobre aprendizaje adaptativo.',
       'Capítulo 2',
     );
     const f2 = await addFeedback(
       t,
       J1,
-      FeedbackChapter.RESULTS,
+      FeedbackChapter.GENERAL,
       'Reportar el tamaño del efecto además de la significancia estadística.',
       'Tabla 4',
     );
     await addFeedback(
       t,
       J2,
-      FeedbackChapter.CONCLUSIONS,
+      FeedbackChapter.GENERAL,
       'Las conclusiones deben responder explícitamente a cada objetivo específico.',
     );
     await submit(
@@ -877,7 +877,7 @@ async function buildSeed(
     const f = await addFeedback(
       t,
       J5,
-      FeedbackChapter.INTRODUCTION,
+      FeedbackChapter.GENERAL,
       'Delimitar mejor el problema de investigación.',
     );
     await submit(

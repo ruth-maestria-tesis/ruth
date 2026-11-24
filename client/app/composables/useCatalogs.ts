@@ -22,5 +22,11 @@ export function useCatalogs() {
   const programName = (id?: string) => programs.value.find((p) => p.id === id)?.name ?? '—';
   const periodCode = (id?: string) => periods.value.find((p) => p.id === id)?.code ?? '—';
   const cohortName = (id?: string) => cohorts.value.find((c) => c.id === id)?.name ?? '—';
-  return { programs, periods, cohorts, ready: loading, programName, periodCode, cohortName };
+  /** Reloads after a catalog was created or edited. */
+  async function reload() {
+    loading = null;
+    useCatalogs();
+    await loading;
+  }
+  return { programs, periods, cohorts, ready: loading, reload, programName, periodCode, cohortName };
 }

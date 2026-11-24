@@ -184,6 +184,16 @@ export interface CreateThesisInput {
   periodId: string;
 }
 
+/** PATCH /theses/:id: student, program, cohort and period are fixed. */
+export interface UpdateThesisInput {
+  title?: string;
+  abstract?: string;
+  keywords?: string[];
+  advisorId?: string;
+  coAdvisorIds?: string[];
+  conflictOfInterestUserIds?: string[];
+}
+
 export interface JurorSummary {
   id: string;
   firstName: string;
@@ -236,6 +246,15 @@ export interface NewExternalJuror {
   institution: string;
   highestDegree: string;
   country: string;
+  /** New Universidad de Córdoba professor not yet registered (counts for RF-C13). */
+  isUnicordoba?: boolean;
+}
+
+/** GET /theses/:id/juror-candidates: faculty ranked for one thesis. */
+export interface JurorCandidate extends User {
+  affinity: string[];
+  activeAssignments: number;
+  conflict: 'PARTY' | 'PREVIOUS_JUROR' | null;
 }
 
 export interface JurorInput {
@@ -274,6 +293,8 @@ export interface FileRef {
   fileId: string;
   fileName: string;
   uploadedAt: string;
+  /** Correction files: manuscript version the juror reviewed. */
+  manuscriptVersion?: number;
 }
 
 export interface Evaluation {

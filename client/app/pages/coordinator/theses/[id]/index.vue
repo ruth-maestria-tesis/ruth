@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { AssignmentStatus, FeedbackStatus, Role, ThesisStatus } from '@thesis/shared';
+import { AssignmentStatus, FeedbackStatus, Role, TERMINAL_THESIS_STATUSES, ThesisStatus } from '@thesis/shared';
 import type { Assignment, ExternalLink } from '~/types/api';
 import { assignmentsApi, feedbackSummaryApi, thesesApi } from '~/utils/api';
 import { downloadFile } from '~/utils/http';
@@ -19,6 +19,7 @@ const { programName, cohortName, periodCode } = useCatalogs();
 
 const assignments = ref<Assignment[]>([]);
 const assignOpen = ref(false);
+const editOpen = ref(false);
 const replaceOpen = ref(false);
 const replaceTarget = ref<Assignment | null>(null);
 const linksOpen = ref(false);
@@ -163,7 +164,11 @@ const isExternalJuror = (a: Assignment) => a.juror?.roles.includes(Role.EXTERNAL
       <v-row>
         <v-col cols="12" lg="7">
           <v-card class="pa-4 mb-4">
-            <div class="text-h2-section mb-3">Ficha técnica</div>
+            <div class="d-flex align-center mb-3">
+              <div class="text-h2-section">Ficha técnica</div>
+              <v-spacer />
+              <v-btn v-if="canManage && !TERMINAL_THESIS_STATUSES.includes(thesis.status)" size="small" variant="outlined" prepend-icon="mdi-pencil-outline" @click="editOpen = true">Editar</v-btn>
+            </div>
             <v-row dense class="text-body-2">
               <v-col cols="6" md="4"><div class="text-meta">Programa</div>{{ programName(thesis.programId) }}</v-col>
               <v-col cols="6" md="4"><div class="text-meta">Cohorte</div>{{ cohortName(thesis.cohortId) }}</v-col>
@@ -255,6 +260,7 @@ const isExternalJuror = (a: Assignment) => a.juror?.roles.includes(Role.EXTERNAL
       <JuryAssignmentDialog v-model="assignOpen" :thesis="thesis" :advisor-name="fullName(advisor)" @assigned="onAssigned" />
       <ReplaceJurorDialog v-model="replaceOpen" :thesis-id="thesis.id" :assignment="replaceTarget" :exclude-ids="assignments.map((a) => a.jurorId)" @done="onReplaced" />
       <ExternalLinksDialog v-model="linksOpen" :links="links" />
+      <ThesisEditDialog v-model="editOpen" :thesis="thesis" @saved="reload" />
     </template>
   </div>
 </template>

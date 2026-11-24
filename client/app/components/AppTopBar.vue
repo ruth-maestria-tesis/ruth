@@ -2,9 +2,13 @@
 import { useAuthStore } from '~/stores/auth';
 import { ROLE_LABELS } from '~/utils/i18n';
 
-defineProps<{ minimal?: boolean }>();
+defineProps<{ minimal?: boolean; title?: string; showMenu?: boolean }>();
+defineEmits<{ menu: [] }>();
 const auth = useAuthStore();
+const { isDark, toggle } = useAppTheme();
 const passwordOpen = ref(false);
+
+const firstName = computed(() => (auth.displayName || '').split(' ')[0]);
 
 async function logout() {
   await auth.logout();
@@ -13,27 +17,28 @@ async function logout() {
 </script>
 
 <template>
-  <v-app-bar class="uc-topbar" flat height="64">
-    <div class="d-flex align-center ga-3 px-4">
-      <div class="brand-logo">UC</div>
-      <div class="text-white">
-        <div class="font-weight-bold" style="font-size: 1.05rem">Plataforma de Tesis de Posgrado</div>
-        <div class="d-none d-sm-block" style="font-size: 0.75rem; opacity: 0.85">
-          Universidad de Córdoba — Vicerrectoría de Investigación y Posgrados
-        </div>
-      </div>
+  <v-app-bar flat height="76" class="uc-topbar" color="background">
+    <v-app-bar-nav-icon v-if="showMenu" class="ml-2" aria-label="Abrir menú" @click="$emit('menu')" />
+    <div class="px-4 px-md-8" style="min-width: 0">
+      <div class="text-eyebrow">{{ title || 'Plataforma de tesis' }}</div>
+      <div class="greeting text-truncate">Hola, {{ firstName || 'bienvenido' }}</div>
     </div>
     <v-spacer />
     <template v-if="auth.user">
+      <v-btn
+        :icon="isDark ? 'mdi-weather-sunny' : 'mdi-weather-night'"
+        variant="text"
+        :aria-label="isDark ? 'Usar tema claro' : 'Usar tema oscuro'"
+        @click="toggle"
+      />
       <NotificationsBell v-if="!minimal" />
       <v-menu location="bottom end">
         <template #activator="{ props }">
-          <v-btn v-bind="props" variant="tonal" color="white" class="mr-3 role-pill" prepend-icon="mdi-account-check-outline">
-            <span class="d-none d-md-inline">{{ auth.displayName }}</span>
-            <span class="d-md-none">Cuenta</span>
+          <v-btn v-bind="props" icon variant="text" class="mr-4 ml-1" aria-label="Cuenta">
+            <v-icon icon="mdi-account-circle-outline" size="28" />
           </v-btn>
         </template>
-        <v-list density="compact" min-width="240">
+        <v-list density="compact" min-width="240" rounded="lg">
           <v-list-item :title="auth.displayName" :subtitle="auth.user.email" />
           <v-list-item>
             <div class="d-flex flex-wrap ga-1">
@@ -51,10 +56,6 @@ async function logout() {
 </template>
 
 <style scoped>
-.brand-logo {
-  width: 40px; height: 40px; background: white; border-radius: 8px; display: flex;
-  align-items: center; justify-content: center; font-weight: 800; color: #006837; font-size: 1.25rem;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-}
-.role-pill { border-radius: 20px !important; }
+.uc-topbar { border-bottom: 1px solid var(--uc-border) !important; backdrop-filter: blur(8px); }
+.greeting { font-size: 22px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.2; }
 </style>

@@ -47,7 +47,12 @@ const slotError = (slot: number) => {
 const checks = computed(() => [
   { ok: jurors.value.length === 2 && !hasCode(JuryViolation.JUROR_COUNT) && !hasCode(JuryViolation.JUROR_DUPLICATE), text: 'Exactamente 2 jurados designados' },
   {
-    ok: (!!user1.value?.jurorProfile?.isUnicordoba || !!user2.value?.jurorProfile?.isUnicordoba) && !hasCode(JuryViolation.JUROR_UNICORDOBA_REQUIRED),
+    ok:
+      (!!user1.value?.jurorProfile?.isUnicordoba ||
+        !!user2.value?.jurorProfile?.isUnicordoba ||
+        !!juror1.value?.newExternal?.isUnicordoba ||
+        !!juror2.value?.newExternal?.isUnicordoba) &&
+      !hasCode(JuryViolation.JUROR_UNICORDOBA_REQUIRED),
     text: 'Al menos 1 con afiliación a la Universidad de Córdoba (RF-C13)',
   },
   {
@@ -127,10 +132,10 @@ async function submit() {
         </v-alert>
         <v-row>
           <v-col cols="12" md="6">
-            <JurorSelector :key="`a${key}`" v-model="juror1" label="Jurado 1 (Docente Unicórdoba)" :allow-external="false" :error="slotError(1)" @selected="user1 = $event" />
+            <JurorSelector :key="`a${key}`" v-model="juror1" label="Jurado 1 (Docente Unicórdoba)" :thesis-id="thesis.id" :exclude-ids="user2 ? [user2.id] : []" :error="slotError(1)" @selected="user1 = $event" />
           </v-col>
           <v-col cols="12" md="6">
-            <JurorSelector :key="`b${key}`" v-model="juror2" label="Jurado 2" :error="slotError(2)" @selected="user2 = $event" />
+            <JurorSelector :key="`b${key}`" v-model="juror2" label="Jurado 2" :thesis-id="thesis.id" :exclude-ids="user1 ? [user1.id] : []" :error="slotError(2)" @selected="user2 = $event" />
           </v-col>
         </v-row>
         <v-row>

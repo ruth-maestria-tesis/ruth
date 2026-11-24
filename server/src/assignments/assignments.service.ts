@@ -45,6 +45,7 @@ import { ReplaceAssignmentDto } from './dto/replace-assignment.dto';
 import { QueryMyAssignmentsDto } from './dto/respond.dto';
 import { AssignTiebreakerDto } from './dto/tiebreaker.dto';
 import { externalAccessUrl, newExternalToken } from './external-token';
+import { rankCandidates } from './juror-candidates';
 import {
   CandidateUser,
   JurorCandidate,
@@ -134,6 +135,10 @@ export const thesisStatusError = (status: ThesisStatus) =>
 /** Hydrated documents always carry the `id` getter; mongoose types it as optional. */
 const withId = (d: AssignmentDocument) =>
   d as AssignmentDocument & { id: string };
+
+/** Faculty read before ranking, and candidates returned (CU-01 juror search). */
+const CANDIDATE_POOL = 200;
+const CANDIDATE_LIMIT = 30;
 
 const partiesOf = (t: ThesisDocument): ThesisParties => ({
   studentId: t.studentId.toHexString(),
@@ -896,7 +901,10 @@ export class AssignmentsService {
         return {
           slot,
           key: `new:${email}`,
-          newExternal: { emailTaken: takenEmails.has(email) },
+          newExternal: {
+            emailTaken: takenEmails.has(email),
+            isUnicordoba: !!input.newExternal.isUnicordoba,
+          },
         };
       }
       const userId = input.jurorId!.toLowerCase();
@@ -908,6 +916,50 @@ export class AssignmentsService {
         user: user ? candidateUser(user) : undefined,
       };
     });
+  }
+
+  /**
+   * Juror search for one thesis (CU-01): faculty ranked by expertise ↔ thesis keywords and
+   * current load, with RN-01 conflicts marked.
+   */
+  async jurorCandidates(thesisId: string, q?: string) {
+    const thesis = await this.theses.findById(thesisId);
+    const [users, { previousJurorIds }] = await Promise.all([
+      this.users.searchFaculty(q, CANDIDATE_POOL),
+      this.juryHistory(thesis._id),
+    ]);
+    const load = await this.activeLoad(users.map((u) => u._id));
+    const ranked = rankCandidates(
+      users.map((u) => ({
+        id: u.id as string,
+        firstName: u.firstName,
+        lastName: u.lastName,
+        email: u.email,
+        roles: u.roles,
+        isActive: u.isActive,
+        jurorProfile: u.jurorProfile,
+        expertise: u.jurorProfile?.expertise ?? [],
+      })),
+      thesis.keywords ?? [],
+      partiesOf(thesis),
+      previousJurorIds,
+      load,
+    );
+    return ranked.slice(0, CANDIDATE_LIMIT);
+  }
+
+  /** Active assignments per juror (PENDING or ACCEPTED), any thesis. */
+  private async activeLoad(
+    jurorIds: readonly Types.ObjectId[],
+  ): Promise<Map<string, number>> {
+    if (!jurorIds.length) return new Map();
+    const rows = await this.model
+      .aggregate<{ _id: Types.ObjectId; n: number }>([
+        { $match: { jurorId: { $in: jurorIds }, isActive: true } },
+        { $group: { _id: '$jurorId', n: { $sum: 1 } } },
+      ])
+      .exec();
+    return new Map(rows.map((r) => [r._id.toHexString(), r.n]));
   }
 
   /** One query, so "already has an active jury" and the juror history come from the same read. */

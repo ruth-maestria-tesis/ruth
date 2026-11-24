@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { AssignmentStatus, Role } from '@thesis/shared';
-import { assignmentsApi, thesesApi } from '~/utils/api';
+import { Role, ThesisStatus } from '@thesis/shared';
+import { assignmentsApi } from '~/utils/api';
 import { useUiStore } from '~/stores/ui';
 
 definePageMeta({ middleware: 'role', roles: [Role.INTERNAL_JUROR, Role.EXTERNAL_JUROR] });
@@ -10,14 +10,9 @@ const ui = useUiStore();
 const { assignment, thesis, loading, error, load } = useJurorAssignment(() => String(route.params.id));
 onMounted(load);
 
+const waitingForJury = computed(() => thesis.value?.status === ThesisStatus.JURORS_ASSIGNED);
 const busy = ref(false);
 const declineOpen = ref(false);
-const manuscript = computed(() => thesis.value?.manuscripts.find((m) => m.fileId === thesis.value?.currentManuscriptId));
-const pdfPath = computed(() =>
-  thesis.value?.currentManuscriptId && assignment.value?.status === AssignmentStatus.ACCEPTED
-    ? thesesApi.manuscriptPath(thesis.value.id, thesis.value.currentManuscriptId)
-    : null,
-);
 
 async function accept() {
   busy.value = true;
@@ -53,7 +48,7 @@ async function decline(reason: string) {
     <template v-if="assignment">
       <JurorAssignmentNav :assignment="assignment" />
 
-      <v-card v-if="assignment.status === 'PENDING'" class="pa-5" style="border-top: 4px solid #006837">
+      <v-card v-if="assignment.status === 'PENDING'" class="pa-5 uc-accent-top">
         <div class="text-h2-section mb-2">Designación pendiente de respuesta</div>
         <p class="text-body-2 mb-4">Al aceptar se habilita la descarga del manuscrito y el formulario de evaluación.</p>
         <v-alert v-if="assignment.thesis?.abstract" type="info" variant="tonal" density="compact" class="mb-4">
@@ -70,10 +65,14 @@ async function decline(reason: string) {
         Esta designación ya no está activa (<AssignmentStatusChip :status="assignment.status" />).
       </v-alert>
 
-      <div v-else class="eval-split">
-        <PdfViewer :path="pdfPath" :file-name="manuscript?.fileName" />
-        <EvaluationForm :assignment="assignment" />
-      </div>
+      <template v-else>
+        <CorrectedDocumentCard :assignment="assignment" :thesis="thesis" />
+        <!-- The thesis moves to UNDER_EVALUATION only when both primary jurors have accepted. -->
+        <v-alert v-if="waitingForJury" type="info" variant="tonal" class="mb-4">
+          La evaluación se habilita cuando el otro jurado acepte su designación. Mientras tanto puede descargar el documento completo.
+        </v-alert>
+        <EvaluationForm v-else :assignment="assignment" />
+      </template>
     </template>
   </div>
 </template>

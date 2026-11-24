@@ -71,18 +71,23 @@ async function upload() {
               </div>
               <div class="text-meta mb-1">Emitido {{ formatDate(e.submittedAt) }} · Nota {{ e.score?.toFixed(1) ?? '—' }}</div>
               <div class="text-body-2">{{ e.comments }}</div>
-              <v-chip
-                v-for="f in e.correctionFiles"
-                :key="f.fileId"
-                class="mt-2 mr-1"
-                prepend-icon="mdi-download"
-                variant="outlined"
-                @click="downloadFile(evaluationsApi.filePath(e.id, f.fileId), f.fileName)"
-              >
-                {{ f.fileName }}
-              </v-chip>
+              <div v-if="e.correctionFiles.length" class="mt-3">
+                <div class="text-meta mb-1">Documento con correcciones del jurado</div>
+                <v-list density="compact" class="pa-0">
+                  <v-list-item
+                    v-for="(f, i) in [...e.correctionFiles].reverse()"
+                    :key="f.fileId"
+                    prepend-icon="mdi-file-document-edit-outline"
+                    :title="f.fileName"
+                    :subtitle="`${formatDate(f.uploadedAt, true)}${f.manuscriptVersion ? ` · sobre su versión ${f.manuscriptVersion}` : ''}${i === 0 ? ' · vigente' : ''}`"
+                    @click="downloadFile(evaluationsApi.filePath(e.id, f.fileId), f.fileName)"
+                  >
+                    <template #append><v-icon icon="mdi-download" size="small" /></template>
+                  </v-list-item>
+                </v-list>
+              </div>
             </v-sheet>
-            <v-btn class="mt-2" variant="outlined" prepend-icon="mdi-message-text-outline" to="/student/feedback">Ver observaciones por capítulo</v-btn>
+            <v-btn class="mt-2" variant="outlined" prepend-icon="mdi-message-text-outline" to="/student/feedback">Ver observaciones de los jurados</v-btn>
           </v-card>
         </v-col>
         <v-col cols="12" lg="6">
@@ -96,7 +101,7 @@ async function upload() {
               </v-list-item>
             </v-list>
             <div class="d-flex ga-2 align-start mt-2">
-              <v-file-input v-model="file" label="Cargar nueva versión (PDF)" accept="application/pdf" prepend-icon="" prepend-inner-icon="mdi-upload" hide-details show-size />
+              <v-file-input v-model="file" label="Cargar nueva versión corregida (PDF)" accept="application/pdf" prepend-icon="" prepend-inner-icon="mdi-upload" hide-details show-size />
               <v-btn color="primary" :disabled="!file" :loading="uploading" height="48" @click="upload">Subir</v-btn>
             </div>
             <v-progress-linear v-if="progress !== null" :model-value="progress" color="primary" height="6" rounded class="mt-2" />

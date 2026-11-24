@@ -82,7 +82,7 @@ onMounted(load);
 
     <v-row>
       <v-col cols="12" sm="6" lg="3">
-        <KpiCard :value="count(ThesisStatus.SUBMITTED)" label="Tesis radicadas (por asignar)" icon="mdi-inbox-arrow-down" to="/coordinator/theses?status=SUBMITTED" />
+        <KpiCard :value="count(ThesisStatus.SUBMITTED)" label="Tesis radicadas (por asignar)" icon="mdi-inbox-arrow-down" featured to="/coordinator/theses?status=SUBMITTED" />
       </v-col>
       <v-col cols="12" sm="6" lg="3">
         <KpiCard

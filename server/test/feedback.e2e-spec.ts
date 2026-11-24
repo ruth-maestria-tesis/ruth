@@ -180,6 +180,20 @@ describe('Feedback — CU-06 / RN-06 (e2e)', () => {
     emitted.mockRestore();
   });
 
+  it('creates a whole-document observation without chapter (GENERAL)', async () => {
+    const { thesisId, juror1 } = await setup();
+    const long = 'Observación general del documento completo. '.repeat(200);
+    const res = await juror1
+      .post(`/api/theses/${thesisId}/feedback`)
+      .send({ content: long })
+      .expect(201);
+    expect(res.body).toMatchObject({
+      chapter: FeedbackChapter.GENERAL,
+      status: 'PENDING',
+    });
+    expect(res.body.content.length).toBeGreaterThan(5000);
+  });
+
   it('lists by chapter order with filters, and summarizes', async () => {
     const { thesisId, juror1, juror2, studentAgent } = await setup();
     const c = (

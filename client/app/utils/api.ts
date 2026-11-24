@@ -21,6 +21,8 @@ import type {
   ExternalLink,
   FeedbackItem,
   GraphView,
+  JurorCandidate,
+  UpdateThesisInput,
   JurorInput,
   JuryResult,
   JuryViolationItem,
@@ -79,6 +81,13 @@ export const catalogsApi = {
   periods: async () => asList(await request<Period[] | Paginated<Period>>('/periods')),
   cohorts: async (programId?: string) =>
     asList(await request<Cohort[] | Paginated<Cohort>>('/cohorts', { query: { programId } })),
+  createProgram: (body: { code: string; name: string; level: string }) => request<Program>('/programs', { method: 'POST', body }),
+  updateProgram: (id: string, body: { name?: string; level?: string; isActive?: boolean }) =>
+    request<Program>(`/programs/${id}`, { method: 'PATCH', body }),
+  createPeriod: (body: { year: number; term: string; startsAt: string; endsAt: string }) => request<Period>('/periods', { method: 'POST', body }),
+  updatePeriod: (id: string, body: { startsAt?: string; endsAt?: string }) => request<Period>(`/periods/${id}`, { method: 'PATCH', body }),
+  createCohort: (body: { programId: string; number: number; periodId: string; name: string }) => request<Cohort>('/cohorts', { method: 'POST', body }),
+  updateCohort: (id: string, body: { name?: string; periodId?: string }) => request<Cohort>(`/cohorts/${id}`, { method: 'PATCH', body }),
 };
 
 export const thesesApi = {
@@ -86,7 +95,7 @@ export const thesesApi = {
   mine: () => request<Thesis[]>('/theses/mine'),
   get: (id: string) => request<Thesis>(`/theses/${id}`),
   create: (body: CreateThesisInput) => request<Thesis>('/theses', { method: 'POST', body }),
-  update: (id: string, body: Partial<CreateThesisInput>) => request<Thesis>(`/theses/${id}`, { method: 'PATCH', body }),
+  update: (id: string, body: UpdateThesisInput) => request<Thesis>(`/theses/${id}`, { method: 'PATCH', body }),
   /** Direct-to-Blob in production, multipart locally (see utils/upload.ts). */
   uploadManuscript: (id: string, file: File, onProgress?: UploadProgress) =>
     uploadFile<Thesis>(`/theses/${id}/manuscripts`, file, onProgress),
@@ -118,6 +127,7 @@ export const auditApi = {
 };
 
 export const assignmentsApi = {
+  candidates: (thesisId: string, q?: string) => request<JurorCandidate[]>(`/theses/${thesisId}/juror-candidates`, { query: { q } }),
   validate: (thesisId: string, jurors: JurorInput[], responseBusinessDays?: number) =>
     request<{ valid: boolean; violations: JuryViolationItem[] }>('/assignments/validate', {
       method: 'POST',
@@ -183,7 +193,7 @@ const FEEDBACK_ROUTE: Record<FeedbackAction, string> = {
 export const feedbackApi = {
   list: (thesisId: string, chapter?: FeedbackChapter): Promise<FeedbackItem[]> =>
     isMocked('feedback') ? mockFeedback.list(thesisId, chapter) : request(`/theses/${thesisId}/feedback`, { query: { chapter } }),
-  create: (thesisId: string, body: { chapter: FeedbackChapter; reference?: string; content: string }, actor: MockActor): Promise<FeedbackItem> =>
+  create: (thesisId: string, body: { chapter?: FeedbackChapter; reference?: string; content: string }, actor: MockActor): Promise<FeedbackItem> =>
     isMocked('feedback') ? mockFeedback.create(thesisId, body, actor) : request(`/theses/${thesisId}/feedback`, { method: 'POST', body }),
   act: (id: string, action: FeedbackAction, content: string, actor: MockActor): Promise<FeedbackItem> =>
     isMocked('feedback')

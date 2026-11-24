@@ -69,7 +69,7 @@ const roleLabel = (a: Assignment) => (a.type === 'TIEBREAKER' ? 'Jurado diriment
     <div class="text-body-2 text-medium-emphasis mb-4">Designaciones, plazos y acceso a la evaluación (CU-08)</div>
     <v-progress-linear v-if="loading" indeterminate color="primary" class="mb-4" />
 
-    <v-card v-for="a in pending" :key="a.id" class="pa-5 mb-4" style="border-top: 4px solid #006837">
+    <v-card v-for="a in pending" :key="a.id" class="pa-5 mb-4 uc-accent-top">
       <div class="d-flex flex-wrap align-center ga-2 mb-3">
         <div>
           <div class="text-h2-section d-flex align-center ga-2"><v-icon icon="mdi-clipboard-check-outline" color="primary" /> Notificación de designación</div>

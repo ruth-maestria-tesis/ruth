@@ -179,6 +179,79 @@ describe('Assignments — CU-01 (e2e)', () => {
     expect(res.body.externalLinks).toHaveLength(1);
   });
 
+  it('creates a new inline Unicórdoba juror that satisfies RF-C13', async () => {
+    const thesis = await createAssignableThesis(app, catalog);
+    await assign(thesis.id as string, {
+      jurors: [
+        {
+          newExternal: {
+            ...newExt('nuevo.docente@correo.unicordoba.edu.co'),
+            institution: 'Universidad de Córdoba',
+            isUnicordoba: true,
+          },
+        },
+        { jurorId: external.id },
+      ],
+    }).expect(201);
+    const created = await app
+      .get(UsersService)
+      .findByEmailWithPassword('nuevo.docente@correo.unicordoba.edu.co');
+    expect(created?.toObject()).toMatchObject({
+      jurorProfile: { isUnicordoba: true },
+    });
+  });
+
+  describe('GET /theses/:id/juror-candidates', () => {
+    it('ranks faculty by affinity and load, and marks conflicts', async () => {
+      const thesis = await createAssignableThesis(app, catalog);
+      await app
+        .get<Model<unknown>>(getModelToken('Thesis'))
+        .updateOne(
+          { _id: thesis._id },
+          { keywords: ['Inteligencia Artificial'] },
+        );
+      const expert = await createUser(app, {
+        roles: [Role.INTERNAL_JUROR],
+        lastName: 'Zzexperto',
+        jurorProfile: {
+          institution: 'Universidad de Córdoba',
+          isUnicordoba: true,
+          expertise: ['inteligencia artificial en educación'],
+        },
+      });
+      const res = await coordinator
+        .get(`/api/theses/${thesis.id as string}/juror-candidates`)
+        .expect(200);
+      const list = res.body as {
+        id: string;
+        affinity: string[];
+        conflict: string | null;
+      }[];
+      expect(list[0]).toMatchObject({
+        id: expert.id,
+        affinity: ['inteligencia artificial en educación'],
+        conflict: null,
+      });
+      const advisor = list.find((c) => c.id === thesis.advisorId.toHexString());
+      if (advisor) expect(advisor.conflict).toBe('PARTY');
+
+      const filtered = await coordinator
+        .get(`/api/theses/${thesis.id as string}/juror-candidates?q=Zzexperto`)
+        .expect(200);
+      expect((filtered.body as { id: string }[]).map((c) => c.id)).toEqual([
+        expert.id,
+      ]);
+    });
+
+    it('is only for coordinators', async () => {
+      const thesis = await createAssignableThesis(app, catalog);
+      const juror = await loginAgent(app, unicor.email);
+      await juror
+        .get(`/api/theses/${thesis.id as string}/juror-candidates`)
+        .expect(403);
+    });
+  });
+
   it.each(INVALID_JURIES)(
     'rejects %s with ASSIGNMENT_INVALID_COMPOSITION',
     async (_name, build, code, slot) => {
