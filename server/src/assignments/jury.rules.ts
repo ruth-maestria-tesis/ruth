@@ -13,7 +13,7 @@ export interface JurorCandidate {
   userId?: string;
   /** Undefined when userId does not exist. */
   user?: CandidateUser;
-  newExternal?: { emailTaken: boolean };
+  newExternal?: { emailTaken: boolean; isUnicordoba?: boolean };
   /** Already on the jury (kept during a replacement): only composition rules apply. */
   keep?: boolean;
 }
@@ -80,8 +80,8 @@ export function validateJury(check: JuryCheck): JuryViolationItem[] {
       flag(JuryViolation.JUROR_PREVIOUSLY_ASSIGNED);
   }
 
-  const hasUnicordoba = candidates.some(
-    (c) => !c.newExternal && c.user?.isUnicordoba,
+  const hasUnicordoba = candidates.some((c) =>
+    c.newExternal ? !!c.newExternal.isUnicordoba : c.user?.isUnicordoba,
   );
   if (requireUnicordoba && candidates.length === required && !hasUnicordoba) {
     violations.push({ code: JuryViolation.JUROR_UNICORDOBA_REQUIRED });

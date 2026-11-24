@@ -66,7 +66,7 @@ export class UsersService {
     });
   }
 
-  /** RF-C14: external juror created during CU-01 or a replacement. */
+  /** RF-C14: new juror created during CU-01 or a replacement (token access, no password). */
   createExternalJuror(dto: NewExternalJurorDto): Promise<UserDocument> {
     return this.create({
       email: dto.email,
@@ -75,7 +75,7 @@ export class UsersService {
       roles: [Role.EXTERNAL_JUROR],
       jurorProfile: {
         institution: dto.institution,
-        isUnicordoba: false,
+        isUnicordoba: dto.isUnicordoba ?? false,
         highestDegree: dto.highestDegree,
         country: dto.country,
       },
@@ -151,7 +151,7 @@ export class UsersService {
   }
 
   /** Autocomplete for juror selection (CU-01): active internal and external jurors. */
-  searchFaculty(q?: string): Promise<UserDocument[]> {
+  searchFaculty(q?: string, limit = 20): Promise<UserDocument[]> {
     const filter: FilterQuery<User> = {
       roles: { $in: [...JUROR_ROLES] },
       isActive: true,
@@ -168,7 +168,7 @@ export class UsersService {
     return this.model
       .find(filter, FACULTY_PROJECTION)
       .sort({ lastName: 1, firstName: 1 })
-      .limit(20)
+      .limit(limit)
       .exec();
   }
 

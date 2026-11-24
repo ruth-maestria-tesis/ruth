@@ -236,6 +236,15 @@ export interface NewExternalJuror {
   institution: string;
   highestDegree: string;
   country: string;
+  /** New Universidad de Córdoba professor not yet registered (counts for RF-C13). */
+  isUnicordoba?: boolean;
+}
+
+/** GET /theses/:id/juror-candidates: faculty ranked for one thesis. */
+export interface JurorCandidate extends User {
+  affinity: string[];
+  activeAssignments: number;
+  conflict: 'PARTY' | 'PREVIOUS_JUROR' | null;
 }
 
 export interface JurorInput {

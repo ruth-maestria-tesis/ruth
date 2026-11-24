@@ -108,6 +108,15 @@ describe('validateJury (RF-C13, RN-01, RF-C14)', () => {
     ).toEqual([{ code: V.JUROR_UNICORDOBA_REQUIRED }]);
   });
 
+  it('counts a new inline Unicórdoba juror for RF-C13', () => {
+    const newUnicordoba: JurorCandidate = {
+      slot: 1,
+      key: 'new:prof@correo.unicordoba.edu.co',
+      newExternal: { emailTaken: false, isUnicordoba: true },
+    };
+    expect(check([newUnicordoba, newExternal(2, 'x@uni.org')])).toEqual([]);
+  });
+
   it('flags previously assigned jurors and taken emails', () => {
     expect(
       check([internal(1, 'j1'), internal(2, 'j2')], {

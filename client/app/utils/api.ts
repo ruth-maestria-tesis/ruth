@@ -21,6 +21,7 @@ import type {
   ExternalLink,
   FeedbackItem,
   GraphView,
+  JurorCandidate,
   JurorInput,
   JuryResult,
   JuryViolationItem,
@@ -118,6 +119,7 @@ export const auditApi = {
 };
 
 export const assignmentsApi = {
+  candidates: (thesisId: string, q?: string) => request<JurorCandidate[]>(`/theses/${thesisId}/juror-candidates`, { query: { q } }),
   validate: (thesisId: string, jurors: JurorInput[], responseBusinessDays?: number) =>
     request<{ valid: boolean; violations: JuryViolationItem[] }>('/assignments/validate', {
       method: 'POST',

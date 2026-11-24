@@ -24,6 +24,7 @@ import {
 import { ReplaceAssignmentDto } from './dto/replace-assignment.dto';
 import { DeclineAssignmentDto, QueryMyAssignmentsDto } from './dto/respond.dto';
 import { AssignTiebreakerDto } from './dto/tiebreaker.dto';
+import { FacultyQueryDto } from '../users/dto/query-users.dto';
 
 @ApiTags('assignments')
 @Controller()
@@ -72,6 +73,16 @@ export class AssignmentsController {
       dto,
       actorFrom(user, Role.COORDINATOR),
     );
+  }
+
+  /** CU-01: faculty ranked for this thesis (affinity, load, RN-01 conflicts). */
+  @Get('theses/:id/juror-candidates')
+  @Roles(Role.COORDINATOR)
+  jurorCandidates(
+    @Param('id', ParseObjectIdPipe) id: string,
+    @Query() query: FacultyQueryDto,
+  ) {
+    return this.assignments.jurorCandidates(id, query.q);
   }
 
   @Get('theses/:id/assignments')
