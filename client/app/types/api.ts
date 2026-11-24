@@ -184,6 +184,16 @@ export interface CreateThesisInput {
   periodId: string;
 }
 
+/** PATCH /theses/:id: student, program, cohort and period are fixed. */
+export interface UpdateThesisInput {
+  title?: string;
+  abstract?: string;
+  keywords?: string[];
+  advisorId?: string;
+  coAdvisorIds?: string[];
+  conflictOfInterestUserIds?: string[];
+}
+
 export interface JurorSummary {
   id: string;
   firstName: string;

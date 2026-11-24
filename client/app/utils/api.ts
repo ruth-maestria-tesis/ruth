@@ -22,6 +22,7 @@ import type {
   FeedbackItem,
   GraphView,
   JurorCandidate,
+  UpdateThesisInput,
   JurorInput,
   JuryResult,
   JuryViolationItem,
@@ -80,6 +81,13 @@ export const catalogsApi = {
   periods: async () => asList(await request<Period[] | Paginated<Period>>('/periods')),
   cohorts: async (programId?: string) =>
     asList(await request<Cohort[] | Paginated<Cohort>>('/cohorts', { query: { programId } })),
+  createProgram: (body: { code: string; name: string; level: string }) => request<Program>('/programs', { method: 'POST', body }),
+  updateProgram: (id: string, body: { name?: string; level?: string; isActive?: boolean }) =>
+    request<Program>(`/programs/${id}`, { method: 'PATCH', body }),
+  createPeriod: (body: { year: number; term: string; startsAt: string; endsAt: string }) => request<Period>('/periods', { method: 'POST', body }),
+  updatePeriod: (id: string, body: { startsAt?: string; endsAt?: string }) => request<Period>(`/periods/${id}`, { method: 'PATCH', body }),
+  createCohort: (body: { programId: string; number: number; periodId: string; name: string }) => request<Cohort>('/cohorts', { method: 'POST', body }),
+  updateCohort: (id: string, body: { name?: string; periodId?: string }) => request<Cohort>(`/cohorts/${id}`, { method: 'PATCH', body }),
 };
 
 export const thesesApi = {
@@ -87,7 +95,7 @@ export const thesesApi = {
   mine: () => request<Thesis[]>('/theses/mine'),
   get: (id: string) => request<Thesis>(`/theses/${id}`),
   create: (body: CreateThesisInput) => request<Thesis>('/theses', { method: 'POST', body }),
-  update: (id: string, body: Partial<CreateThesisInput>) => request<Thesis>(`/theses/${id}`, { method: 'PATCH', body }),
+  update: (id: string, body: UpdateThesisInput) => request<Thesis>(`/theses/${id}`, { method: 'PATCH', body }),
   /** Direct-to-Blob in production, multipart locally (see utils/upload.ts). */
   uploadManuscript: (id: string, file: File, onProgress?: UploadProgress) =>
     uploadFile<Thesis>(`/theses/${id}/manuscripts`, file, onProgress),

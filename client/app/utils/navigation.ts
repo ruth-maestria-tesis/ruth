@@ -12,6 +12,7 @@ export const NAV_ITEMS: NavItem[] = [
   { title: 'Dashboard Coordinación', icon: 'mdi-view-dashboard-outline', to: '/coordinator', roles: [Role.COORDINATOR] },
   { title: 'Bandeja General de Tesis', icon: 'mdi-folder-multiple-outline', to: '/coordinator/theses', roles: [Role.COORDINATOR, Role.ADMIN] },
   { title: 'Sustentaciones', icon: 'mdi-calendar-clock', to: '/coordinator/defenses', roles: [Role.COORDINATOR] },
+  { title: 'Catálogos', icon: 'mdi-book-cog-outline', to: '/coordinator/catalogs', roles: [Role.COORDINATOR, Role.ADMIN] },
   { title: 'Usuarios', icon: 'mdi-account-group-outline', to: '/admin/users', roles: [Role.ADMIN] },
   { title: 'Auditoría', icon: 'mdi-shield-search', to: '/admin/audit', roles: [Role.ADMIN, Role.COORDINATOR] },
   { title: 'Mis designaciones', icon: 'mdi-clipboard-check-outline', to: '/juror', roles: [Role.INTERNAL_JUROR, Role.EXTERNAL_JUROR] },

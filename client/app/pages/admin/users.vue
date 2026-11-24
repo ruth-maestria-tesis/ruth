@@ -21,6 +21,7 @@ const headers = [
   { title: 'Roles', key: 'roles', sortable: false },
   { title: 'Institución', key: 'institution', sortable: false },
   { title: 'Activo', key: 'isActive', sortable: false },
+  { title: 'Acciones', key: 'actions', sortable: false, align: 'end' as const },
 ];
 
 async function load() {
@@ -55,40 +56,89 @@ async function toggle(u: User) {
 }
 
 const open = ref(false);
+/** null = creating a new user. */
+const editing = ref<User | null>(null);
 const saving = ref(false);
 const error = ref('');
 const form = reactive({
   email: '', firstName: '', lastName: '', password: '', roles: [] as Role[],
   institution: 'Universidad de Córdoba', isUnicordoba: true, highestDegree: '', country: 'Colombia', studentCode: '',
+  expertise: [] as string[],
 });
 const isJuror = computed(() => form.roles.some((r) => r === Role.INTERNAL_JUROR || r === Role.EXTERNAL_JUROR));
 const isExternalOnly = computed(() => form.roles.length > 0 && form.roles.every((r) => r === Role.EXTERNAL_JUROR));
 const isStudent = computed(() => form.roles.includes(Role.STUDENT));
 function startCreate() {
-  Object.assign(form, { email: '', firstName: '', lastName: '', password: '', roles: [], studentCode: '', highestDegree: '' });
+  editing.value = null;
+  Object.assign(form, {
+    email: '', firstName: '', lastName: '', password: '', roles: [], studentCode: '', highestDegree: '',
+    institution: 'Universidad de Córdoba', isUnicordoba: true, country: 'Colombia', expertise: [],
+  });
   error.value = '';
   open.value = true;
 }
-async function create() {
+function startEdit(u: User) {
+  editing.value = u;
+  Object.assign(form, {
+    email: u.email,
+    firstName: u.firstName,
+    lastName: u.lastName,
+    password: '',
+    roles: [...u.roles],
+    institution: u.jurorProfile?.institution ?? 'Universidad de Córdoba',
+    isUnicordoba: u.jurorProfile?.isUnicordoba ?? true,
+    highestDegree: u.jurorProfile?.highestDegree ?? '',
+    country: u.jurorProfile?.country ?? 'Colombia',
+    expertise: [...(u.jurorProfile?.expertise ?? [])],
+    studentCode: u.studentProfile?.studentCode ?? '',
+  });
+  error.value = '';
+  open.value = true;
+}
+/** Juror and student profiles, sent whole (the API replaces the sub-document). */
+function profiles() {
+  return {
+    ...(isJuror.value && {
+      jurorProfile: {
+        institution: form.institution.trim(),
+        isUnicordoba: form.isUnicordoba,
+        highestDegree: form.highestDegree.trim() || undefined,
+        country: form.country.trim() || undefined,
+        expertise: form.expertise.map((x) => x.trim()).filter(Boolean),
+      },
+    }),
+    ...(isStudent.value && {
+      studentProfile: { ...editing.value?.studentProfile, studentCode: form.studentCode.trim() },
+    }),
+  };
+}
+async function save() {
   saving.value = true;
   error.value = '';
   try {
-    await usersApi.create({
-      email: form.email.trim(),
-      firstName: form.firstName.trim(),
-      lastName: form.lastName.trim(),
-      roles: form.roles,
-      ...(!isExternalOnly.value && { password: form.password }),
-      ...(isJuror.value && {
-        jurorProfile: { institution: form.institution, isUnicordoba: form.isUnicordoba, highestDegree: form.highestDegree || undefined, country: form.country || undefined },
-      }),
-      ...(isStudent.value && { studentProfile: { studentCode: form.studentCode } }),
-    });
-    ui.notify('Usuario creado.');
+    if (editing.value) {
+      await usersApi.update(editing.value.id, {
+        firstName: form.firstName.trim(),
+        lastName: form.lastName.trim(),
+        roles: form.roles,
+        ...profiles(),
+      });
+      ui.notify('Usuario actualizado.');
+    } else {
+      await usersApi.create({
+        email: form.email.trim(),
+        firstName: form.firstName.trim(),
+        lastName: form.lastName.trim(),
+        roles: form.roles,
+        ...(!isExternalOnly.value && { password: form.password }),
+        ...profiles(),
+      });
+      ui.notify('Usuario creado.');
+    }
     open.value = false;
     load();
   } catch (e) {
-    error.value = e instanceof ApiError ? e.userMessage : 'No se pudo crear el usuario.';
+    error.value = e instanceof ApiError ? e.userMessage : 'No se pudo guardar el usuario.';
   } finally {
     saving.value = false;
   }
@@ -123,23 +173,37 @@ async function create() {
       <template #[`item.isActive`]="{ item }">
         <v-switch :model-value="item.isActive" color="success" hide-details density="compact" inset @update:model-value="toggle(item)" />
       </template>
+      <template #[`item.actions`]="{ item }">
+        <v-btn size="small" variant="text" prepend-icon="mdi-pencil-outline" @click="startEdit(item)">Editar</v-btn>
+      </template>
     </v-data-table-server>
 
     <v-dialog v-model="open" max-width="640">
-      <v-card title="Nuevo usuario">
+      <v-card :title="editing ? 'Editar usuario' : 'Nuevo usuario'">
         <v-card-text>
           <v-alert v-if="error" type="error" variant="tonal" density="compact" class="mb-3">{{ error }}</v-alert>
           <v-row dense>
             <v-col cols="6"><v-text-field v-model="form.firstName" label="Nombres" /></v-col>
             <v-col cols="6"><v-text-field v-model="form.lastName" label="Apellidos" /></v-col>
-            <v-col cols="12"><v-text-field v-model="form.email" label="Correo" type="email" /></v-col>
+            <v-col cols="12"><v-text-field v-model="form.email" label="Correo" type="email" :disabled="!!editing" :hint="editing ? 'El correo no se puede cambiar' : ''" persistent-hint /></v-col>
             <v-col cols="12"><v-select v-model="form.roles" :items="roleItems" label="Roles" multiple chips /></v-col>
-            <v-col v-if="!isExternalOnly" cols="12"><v-text-field v-model="form.password" label="Contraseña inicial (mín. 8)" type="password" autocomplete="new-password" /></v-col>
+            <v-col v-if="!isExternalOnly && !editing" cols="12"><v-text-field v-model="form.password" label="Contraseña inicial (mín. 8)" type="password" autocomplete="new-password" /></v-col>
             <template v-if="isJuror">
               <v-col cols="8"><v-text-field v-model="form.institution" label="Institución" /></v-col>
               <v-col cols="4"><v-switch v-model="form.isUnicordoba" label="Unicórdoba" color="primary" inset hide-details /></v-col>
               <v-col cols="6"><v-text-field v-model="form.highestDegree" label="Máximo título" /></v-col>
               <v-col cols="6"><v-text-field v-model="form.country" label="País" /></v-col>
+              <v-col cols="12">
+                <v-combobox
+                  v-model="form.expertise"
+                  label="Áreas de experticia (Enter para agregar)"
+                  hint="Se comparan con las palabras clave de cada tesis para sugerir jurados"
+                  persistent-hint
+                  multiple
+                  chips
+                  closable-chips
+                />
+              </v-col>
             </template>
             <v-col v-if="isStudent" cols="12"><v-text-field v-model="form.studentCode" label="Código estudiantil" /></v-col>
           </v-row>
@@ -147,7 +211,7 @@ async function create() {
         <v-card-actions>
           <v-spacer />
           <v-btn variant="text" @click="open = false">Cancelar</v-btn>
-          <v-btn color="primary" variant="flat" :loading="saving" :disabled="!form.email || !form.firstName || !form.lastName || !form.roles.length" @click="create">Crear</v-btn>
+          <v-btn color="primary" variant="flat" :loading="saving" :disabled="!form.email || !form.firstName || !form.lastName || !form.roles.length" @click="save">{{ editing ? 'Guardar cambios' : 'Crear' }}</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
