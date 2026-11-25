@@ -50,6 +50,8 @@ interface ThesisInfo {
   id: string;
   label: string;
   studentId: string;
+  /** Main student plus co-authors. */
+  studentIds: string[];
   advisorId?: string;
 }
 
@@ -82,7 +84,13 @@ export class NotificationsListeners {
   private async thesisInfo(thesisId?: string): Promise<ThesisInfo | null> {
     if (!thesisId || !Types.ObjectId.isValid(thesisId)) return null;
     const t = await this.theses
-      .findById(thesisId, { code: 1, title: 1, studentId: 1, advisorId: 1 })
+      .findById(thesisId, {
+        code: 1,
+        title: 1,
+        studentId: 1,
+        coStudentIds: 1,
+        advisorId: 1,
+      })
       .lean()
       .exec();
     if (!t) return null;
@@ -90,6 +98,7 @@ export class NotificationsListeners {
       id: String(t._id),
       label: `${t.code} — ${t.title}`,
       studentId: String(t.studentId),
+      studentIds: [t.studentId, ...(t.coStudentIds ?? [])].map(String),
       advisorId: t.advisorId ? String(t.advisorId) : undefined,
     };
   }
@@ -127,7 +136,7 @@ export class NotificationsListeners {
     };
     if (!payload.entityRef?.id) delete payload.entityRef;
     const ids: string[] = [];
-    if (t && audience.student) ids.push(t.studentId);
+    if (t && audience.student) ids.push(...t.studentIds);
     if (t && audience.jurors) ids.push(...(await this.activeJurorIds(t.id)));
     await this.notifications.notify(ids, payload);
     if (audience.coordinators) {
@@ -227,7 +236,7 @@ export class NotificationsListeners {
       const t = await this.thesisInfo(e.thesisId);
       if (!t) return;
       const status = STATUS_LABEL[e.to] ?? e.to;
-      await this.notifications.notify([t.studentId], {
+      await this.notifications.notify(t.studentIds, {
         type: THESIS_STATUS_CHANGED,
         title: 'Cambio de estado de tu tesis',
         body: `Tu tesis ${t.label} cambió a: ${status}.`,
@@ -271,7 +280,7 @@ export class NotificationsListeners {
     return this.safe('feedback.created', async () => {
       const thesisId = str(e?.thesisId);
       const t = await this.thesisInfo(thesisId);
-      await this.notifications.notify([str(e?.studentId) ?? t?.studentId], {
+      await this.notifications.notify(t?.studentIds ?? [str(e?.studentId)], {
         type: 'feedback.created',
         title: 'Nueva observación de un jurado',
         body: `Recibiste una observación sobre la tesis ${t?.label ?? ''}. Revísala y atiéndela.`,
@@ -305,7 +314,7 @@ export class NotificationsListeners {
     return this.safe('feedback.reopened', async () => {
       const thesisId = str(e?.thesisId);
       const t = await this.thesisInfo(thesisId);
-      await this.notifications.notify([str(e?.studentId) ?? t?.studentId], {
+      await this.notifications.notify(t?.studentIds ?? [str(e?.studentId)], {
         type: 'feedback.reopened',
         title: 'Observación reabierta',
         body: `Un jurado reabrió una observación sobre la tesis ${t?.label ?? ''}. Revísala y atiéndela de nuevo.`,

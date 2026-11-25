@@ -3,7 +3,7 @@ import { AssignmentStatus, FeedbackStatus, Role, TERMINAL_THESIS_STATUSES, Thesi
 import type { Assignment, ExternalLink } from '~/types/api';
 import { assignmentsApi, feedbackSummaryApi, thesesApi } from '~/utils/api';
 import { downloadFile } from '~/utils/http';
-import { THESIS_STATUS_LABELS, formatDate, fullName } from '~/utils/i18n';
+import { THESIS_STATUS_LABELS, formatDate, fullName, studentLabel } from '~/utils/i18n';
 import { useAuthStore } from '~/stores/auth';
 import { useUiStore } from '~/stores/ui';
 
@@ -114,13 +114,10 @@ function onReplaced(l?: ExternalLink) {
     linksOpen.value = true;
   }
 }
-async function regenerateLink(a: Assignment) {
-  try {
-    links.value = [await assignmentsApi.externalLink(a.id)];
-    linksOpen.value = true;
-  } catch (e) {
-    ui.error(e);
-  }
+function showLink(l: ExternalLink) {
+  links.value = [l];
+  linksOpen.value = true;
+  reload();
 }
 async function upload() {
   const f = Array.isArray(uploadFile.value) ? uploadFile.value[0] : uploadFile.value;
@@ -173,7 +170,7 @@ const isExternalJuror = (a: Assignment) => a.juror?.roles.includes(Role.EXTERNAL
               <v-col cols="6" md="4"><div class="text-meta">Programa</div>{{ programName(thesis.programId) }}</v-col>
               <v-col cols="6" md="4"><div class="text-meta">Cohorte</div>{{ cohortName(thesis.cohortId) }}</v-col>
               <v-col cols="6" md="4"><div class="text-meta">Periodo</div>{{ periodCode(thesis.periodId) }}</v-col>
-              <v-col cols="6" md="4"><div class="text-meta">Estudiante</div>{{ thesis.studentName }}</v-col>
+              <v-col cols="6" md="4"><div class="text-meta">{{ studentLabel(thesis.studentName) }}</div>{{ thesis.studentName }}</v-col>
               <v-col cols="6" md="4"><div class="text-meta">Director</div>{{ fullName(advisor) }}</v-col>
               <v-col cols="6" md="4"><div class="text-meta">Radicada</div>{{ formatDate(thesis.createdAt) }}</v-col>
             </v-row>
@@ -236,12 +233,14 @@ const isExternalJuror = (a: Assignment) => a.juror?.roles.includes(Role.EXTERNAL
                 <span class="text-meta">Asignado {{ formatDate(a.assignedAt) }} (hace {{ a.daysSinceAssigned }} días)</span>
               </div>
               <div v-if="a.declineReason" class="text-body-2 mt-2"><strong>Motivo:</strong> {{ a.declineReason }}</div>
-              <div class="d-flex ga-2 mt-2">
-                <v-btn v-if="replaceable(a)" size="small" color="warning" variant="tonal" prepend-icon="mdi-account-switch" @click="openReplace(a)">Reemplazar</v-btn>
-                <v-btn v-if="canManage && isExternalJuror(a) && ['PENDING', 'ACCEPTED'].includes(a.status)" size="small" variant="outlined" prepend-icon="mdi-link-variant" @click="regenerateLink(a)">
-                  Enlace de acceso
-                </v-btn>
+              <div v-if="replaceable(a)" class="d-flex ga-2 mt-2">
+                <v-btn size="small" color="warning" variant="tonal" prepend-icon="mdi-account-switch" @click="openReplace(a)">Reemplazar</v-btn>
               </div>
+              <InvitationLinkPanel
+                v-if="canManage && isExternalJuror(a) && ['PENDING', 'ACCEPTED'].includes(a.status)"
+                :assignment="a"
+                @generated="showLink"
+              />
             </v-sheet>
             <v-expansion-panels v-if="history.length" variant="accordion" class="mt-2">
               <v-expansion-panel title="Jurados reemplazados">

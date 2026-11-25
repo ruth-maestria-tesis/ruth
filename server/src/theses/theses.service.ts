@@ -54,6 +54,7 @@ const SORT_FIELDS: SortFields = {
 };
 
 const PARTICIPANT_FIELDS = [
+  'coStudentIds',
   'advisorId',
   'coAdvisorIds',
   'conflictOfInterestUserIds',
@@ -61,8 +62,14 @@ const PARTICIPANT_FIELDS = [
 
 type Participants = Pick<
   CreateThesisDto,
-  'studentId' | 'advisorId' | 'coAdvisorIds' | 'conflictOfInterestUserIds'
+  | 'studentId'
+  | 'coStudentIds'
+  | 'advisorId'
+  | 'coAdvisorIds'
+  | 'conflictOfInterestUserIds'
 >;
+
+const fullName = (u: UserDocument) => `${u.firstName} ${u.lastName}`;
 
 const invalidRef = (field: string) =>
   new AppException(
@@ -124,11 +131,15 @@ export class ThesesService {
       );
     }
 
-    const student = await this.assertParticipants(dto);
+    const students = await this.assertParticipants(dto);
     // Check-then-insert: two simultaneous registrations for one student could both pass (accepted).
+    const studentIds = students.map((s) => s._id);
     if (
       await this.model.exists({
-        studentId: dto.studentId,
+        $or: [
+          { studentId: { $in: studentIds } },
+          { coStudentIds: { $in: studentIds } },
+        ],
         status: { $nin: TERMINAL_THESIS_STATUSES },
       })
     ) {
@@ -143,7 +154,7 @@ export class ThesesService {
     return this.model.create({
       ...dto,
       code,
-      studentName: `${student.firstName} ${student.lastName}`,
+      studentName: students.map(fullName).join(', '),
       status: ThesisStatus.SUBMITTED,
       progress: THESIS_PROGRESS[ThesisStatus.SUBMITTED],
       history: [
@@ -190,7 +201,10 @@ export class ThesesService {
   }
 
   findMine(studentId: string): Promise<ThesisDocument[]> {
-    return this.model.find({ studentId }).sort({ createdAt: -1 }).exec();
+    return this.model
+      .find({ $or: [{ studentId }, { coStudentIds: studentId }] })
+      .sort({ createdAt: -1 })
+      .exec();
   }
 
   async findById(id: string): Promise<ThesisDocument> {
@@ -286,6 +300,7 @@ export class ThesesService {
         'Thesis is closed',
       );
     }
+    let studentName: string | undefined;
     const touchesParticipants = PARTICIPANT_FIELDS.some(
       (f) => dto[f] !== undefined,
     );
@@ -298,8 +313,10 @@ export class ThesesService {
           'Advisors and conflicts can only change before juror assignment',
         );
       }
-      await this.assertParticipants({
+      const students = await this.assertParticipants({
         studentId: thesis.studentId.toHexString(),
+        coStudentIds:
+          dto.coStudentIds ?? thesis.coStudentIds.map((x) => x.toHexString()),
         advisorId: dto.advisorId ?? thesis.advisorId.toHexString(),
         coAdvisorIds:
           dto.coAdvisorIds ?? thesis.coAdvisorIds.map((x) => x.toHexString()),
@@ -307,11 +324,33 @@ export class ThesesService {
           dto.conflictOfInterestUserIds ??
           thesis.conflictOfInterestUserIds.map((x) => x.toHexString()),
       });
+      if (dto.coStudentIds) {
+        // A co-author cannot already be on another active thesis.
+        if (
+          await this.model.exists({
+            _id: { $ne: thesis._id },
+            $or: [
+              { studentId: { $in: dto.coStudentIds } },
+              { coStudentIds: { $in: dto.coStudentIds } },
+            ],
+            status: { $nin: TERMINAL_THESIS_STATUSES },
+          })
+        ) {
+          throw new AppException(
+            ErrorCode.THESIS_STUDENT_HAS_ACTIVE,
+            HttpStatus.CONFLICT,
+            'Student already has an active thesis',
+          );
+        }
+        studentName = students.map(fullName).join(', ');
+      }
     }
     const updated = await this.model
       .findOneAndUpdate(
         { _id: thesis._id, status: thesis.status },
-        { $set: definedFields(dto) },
+        {
+          $set: { ...definedFields(dto), ...(studentName && { studentName }) },
+        },
         { new: true, runValidators: true },
       )
       .exec();
@@ -325,12 +364,15 @@ export class ThesesService {
     return updated;
   }
 
-  /** Validates every referenced user in one query; returns the student. */
-  private async assertParticipants(input: Participants): Promise<UserDocument> {
+  /** Validates every referenced user in one query; returns the students (main one first). */
+  private async assertParticipants(
+    input: Participants,
+  ): Promise<UserDocument[]> {
     // @IsMongoId accepts uppercase hex; compare ids in one canonical form.
     const lower = (ids?: string[]) => ids?.map((x) => x.toLowerCase());
     const p = {
       studentId: input.studentId.toLowerCase(),
+      coStudentIds: lower(input.coStudentIds) ?? [],
       advisorId: input.advisorId.toLowerCase(),
       coAdvisorIds: lower(input.coAdvisorIds),
       conflictOfInterestUserIds: lower(input.conflictOfInterestUserIds),
@@ -338,7 +380,13 @@ export class ThesesService {
     const coAdvisorIds = p.coAdvisorIds ?? [];
     const conflictIds = p.conflictOfInterestUserIds ?? [];
     const ids = [
-      ...new Set([p.studentId, p.advisorId, ...coAdvisorIds, ...conflictIds]),
+      ...new Set([
+        p.studentId,
+        ...p.coStudentIds,
+        p.advisorId,
+        ...coAdvisorIds,
+        ...conflictIds,
+      ]),
     ];
     const byId = new Map(
       (await this.users.findManyByIds(ids)).map((u) => [u.id as string, u]),
@@ -347,19 +395,25 @@ export class ThesesService {
     const student = byId.get(p.studentId);
     if (!student?.isActive || !student.roles.includes(Role.STUDENT))
       throw invalidRef('studentId');
-    if (p.advisorId === p.studentId || !isFaculty(byId.get(p.advisorId)))
+    const isStudent = (u?: UserDocument) =>
+      !!u && u.isActive && u.roles.includes(Role.STUDENT);
+    const coStudents = p.coStudentIds.map((id) => byId.get(id));
+    if (p.coStudentIds.includes(p.studentId) || !coStudents.every(isStudent))
+      throw invalidRef('coStudentIds');
+    const studentSet = new Set([p.studentId, ...p.coStudentIds]);
+    if (studentSet.has(p.advisorId) || !isFaculty(byId.get(p.advisorId)))
       throw invalidRef('advisorId');
     if (
       coAdvisorIds.some(
         (id) =>
-          id === p.advisorId || id === p.studentId || !isFaculty(byId.get(id)),
+          id === p.advisorId || studentSet.has(id) || !isFaculty(byId.get(id)),
       )
     ) {
       throw invalidRef('coAdvisorIds');
     }
     if (conflictIds.some((id) => !byId.has(id)))
       throw invalidRef('conflictOfInterestUserIds');
-    return student;
+    return [student, ...(coStudents as UserDocument[])];
   }
 
   /** New manuscript version (PDF) from a multipart upload. Coordinator or the owner student. */

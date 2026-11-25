@@ -3,7 +3,7 @@ import { MinutesStatus, MinutesVerdict, Role } from '@thesis/shared';
 import type { Minutes, ThesisSummary } from '~/types/api';
 import { minutesApi } from '~/utils/api';
 import { downloadFile } from '~/utils/http';
-import { MINUTES_VERDICT_LABELS, ROLE_LABELS, formatDate } from '~/utils/i18n';
+import { MINUTES_VERDICT_LABELS, ROLE_LABELS, formatDate, studentLabel } from '~/utils/i18n';
 import { isMocked } from '~/utils/mocks';
 import { useUiStore } from '~/stores/ui';
 
@@ -113,7 +113,7 @@ async function sign() {
       </div>
       <div class="text-body-2 mb-4">
         <strong>Tesis:</strong> {{ thesis.title }} ({{ thesis.code }})<br />
-        <strong>Estudiante:</strong> {{ thesis.studentName }}
+        <strong>{{ studentLabel(thesis.studentName) }}:</strong> {{ thesis.studentName }}
       </div>
 
       <template v-if="!minutes">

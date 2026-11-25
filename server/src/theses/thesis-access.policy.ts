@@ -2,17 +2,28 @@ import { AssignmentStatus, Role } from '@thesis/shared';
 import type { Types } from 'mongoose';
 import type { AuthUser } from '../common/types/auth-user';
 
+/** The main student or one of the co-authors. */
+export function isThesisStudent(
+  thesis: { studentId: Types.ObjectId; coStudentIds?: Types.ObjectId[] },
+  userId: string,
+): boolean {
+  return (
+    thesis.studentId.equals(userId) ||
+    (thesis.coStudentIds ?? []).some((id) => id.equals(userId))
+  );
+}
+
 /**
  * Read access to a thesis and its manuscripts for staff and the owner student (RBAC matrix).
  * Jurors are covered by `jurorAccessLevel` (ThesesService checks their assignments).
  */
 export function canReadThesis(
   user: AuthUser,
-  thesis: { studentId: Types.ObjectId },
+  thesis: { studentId: Types.ObjectId; coStudentIds?: Types.ObjectId[] },
 ): boolean {
   if (user.roles.includes(Role.ADMIN) || user.roles.includes(Role.COORDINATOR))
     return true;
-  return user.roles.includes(Role.STUDENT) && thesis.studentId.equals(user.id);
+  return user.roles.includes(Role.STUDENT) && isThesisStudent(thesis, user.id);
 }
 
 /**
@@ -21,10 +32,10 @@ export function canReadThesis(
  */
 export function canWriteThesis(
   user: AuthUser,
-  thesis: { studentId: Types.ObjectId },
+  thesis: { studentId: Types.ObjectId; coStudentIds?: Types.ObjectId[] },
 ): boolean {
   if (user.roles.includes(Role.COORDINATOR)) return true;
-  return user.roles.includes(Role.STUDENT) && thesis.studentId.equals(user.id);
+  return user.roles.includes(Role.STUDENT) && isThesisStudent(thesis, user.id);
 }
 
 export type JurorAccess = 'NONE' | 'METADATA' | 'MANUSCRIPT';

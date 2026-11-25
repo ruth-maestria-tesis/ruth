@@ -19,10 +19,11 @@ async function copy(url: string) {
 
 <template>
   <v-dialog v-model="open" max-width="640">
-    <v-card title="Enlaces de acceso para jurados externos">
+    <v-card title="Enlace de invitación para el jurado">
       <v-card-text>
         <v-alert type="info" variant="tonal" density="compact" class="mb-3">
-          Envíe este enlace al jurado externo por correo. Generar uno nuevo invalida el anterior.
+          Copie el enlace y envíelo al jurado por correo: con él entra sin contraseña y solo ve esta tesis. Por seguridad
+          no se vuelve a mostrar; si se pierde, genere uno nuevo desde la tarjeta del jurado (el anterior deja de funcionar).
         </v-alert>
         <div v-for="l in links" :key="l.assignmentId" class="mb-3">
           <v-text-field :model-value="l.url" readonly class="mono" :hint="`Vence: ${formatDate(l.expiresAt, true)}`" persistent-hint>

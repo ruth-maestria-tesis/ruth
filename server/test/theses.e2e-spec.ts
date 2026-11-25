@@ -109,6 +109,44 @@ describe('Theses (e2e)', () => {
       expect(res.body.code).toBe('THESIS_STUDENT_HAS_ACTIVE');
     });
 
+    it('registers a joint thesis; every student sees it and none can start another', async () => {
+      const main = await newStudent('Ana', 'Ruiz');
+      const co = await newStudent('Beto', 'Díaz');
+      const res = await coordinator
+        .post('/api/theses')
+        .send(body(main.id as string, { coStudentIds: [co.id] }))
+        .expect(201);
+      expect(res.body).toMatchObject({
+        coStudentIds: [co.id],
+        studentName: 'Ana Ruiz, Beto Díaz',
+      });
+
+      const coAgent = await loginAgent(app, co.email);
+      const mine = await coAgent.get('/api/theses/mine').expect(200);
+      expect(mine.body.map((x: { id: string }) => x.id)).toEqual([res.body.id]);
+      await coAgent.get(`/api/theses/${res.body.id as string}`).expect(200);
+
+      const again = await coordinator
+        .post('/api/theses')
+        .send(body(co.id as string))
+        .expect(409);
+      expect(again.body.code).toBe('THESIS_STUDENT_HAS_ACTIVE');
+    });
+
+    it('rejects a co-student that is not a student or repeats the main one', async () => {
+      const s = await newStudent();
+      for (const coStudentIds of [[advisor.id], [s.id]]) {
+        const res = await coordinator
+          .post('/api/theses')
+          .send(body(s.id as string, { coStudentIds }))
+          .expect(400);
+        expect(res.body).toMatchObject({
+          code: 'THESIS_INVALID_REFERENCE',
+          details: { field: 'coStudentIds' },
+        });
+      }
+    });
+
     it.each([
       [
         'studentId',
@@ -438,6 +476,22 @@ describe('Theses (e2e)', () => {
         .send({ title: 'No' })
         .expect(409);
       expect(closed.body.code).toBe('THESIS_CLOSED');
+    });
+
+    it('adds a co-student while SUBMITTED and refreshes the student names', async () => {
+      const main = await newStudent('Carla', 'Mora');
+      const co = await newStudent('Dario', 'Vega');
+      const t = await createThesis(app, catalog, {
+        studentId: main.id as string,
+      });
+      const res = await coordinator
+        .patch(`/api/theses/${t.id as string}`)
+        .send({ coStudentIds: [co.id] })
+        .expect(200);
+      expect(res.body).toMatchObject({
+        coStudentIds: [co.id],
+        studentName: 'Carla Mora, Dario Vega',
+      });
     });
 
     it('rejects body fields that are not editable', async () => {
