@@ -74,7 +74,11 @@ export class Thesis {
   @Prop({ type: ObjectId, ref: 'User', required: true })
   studentId!: Types.ObjectId;
 
-  /** Denormalized "First Last" for sort=student and q regex search. */
+  /** Co-authors of a joint thesis (the main student is `studentId`). */
+  @Prop({ type: [ObjectId], ref: 'User', default: [] })
+  coStudentIds!: Types.ObjectId[];
+
+  /** Denormalized "First Last" of every student (", "), for sort=student and q regex search. */
   @Prop({ required: true })
   studentName!: string;
 
@@ -134,6 +138,7 @@ ThesisSchema.index({ status: 1 });
 ThesisSchema.index({ periodId: 1, cohortId: 1 });
 ThesisSchema.index({ programId: 1 });
 ThesisSchema.index({ studentId: 1 });
+ThesisSchema.index({ coStudentIds: 1 });
 ThesisSchema.index({ seedTag: 1 });
 ThesisSchema.index(
   { title: 'text', code: 'text' },

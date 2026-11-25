@@ -31,6 +31,14 @@ export class UpdateThesisDto {
   @MaxLength(60, { each: true })
   keywords?: string[];
 
+  /** Co-authors besides the main student (only before juror assignment). */
+  @IsOptionalNonNull()
+  @IsArray()
+  @ArrayMaxSize(2)
+  @ArrayUnique(lowercaseIdentifier)
+  @IsMongoId({ each: true })
+  coStudentIds?: string[];
+
   @IsOptionalNonNull()
   @IsMongoId()
   advisorId?: string;

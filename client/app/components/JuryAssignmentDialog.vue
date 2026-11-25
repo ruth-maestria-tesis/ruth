@@ -3,7 +3,7 @@ import { JuryViolation } from '@thesis/shared';
 import type { ExternalLink, JurorInput, JuryViolationItem, Thesis, User } from '~/types/api';
 import { assignmentsApi } from '~/utils/api';
 import { ApiError } from '~/utils/http';
-import { VIOLATION_LABELS } from '~/utils/i18n';
+import { VIOLATION_LABELS, studentLabel } from '~/utils/i18n';
 import { useUiStore } from '~/stores/ui';
 
 /** CU-01 · RF-C13 · RN-01 · RF-C14 */
@@ -122,7 +122,7 @@ async function submit() {
           <div class="text-meta">{{ thesis.code }}</div>
           <div class="font-weight-bold text-primary">{{ thesis.title }}</div>
           <div class="text-body-2 text-medium-emphasis">
-            Estudiante: <strong>{{ thesis.studentName }}</strong>
+            {{ studentLabel(thesis.studentName) }}: <strong>{{ thesis.studentName }}</strong>
             <template v-if="advisorName"> · Director: <strong>{{ advisorName }}</strong></template>
             · Codirectores: {{ thesis.coAdvisorIds.length }}
           </div>

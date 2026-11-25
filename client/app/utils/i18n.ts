@@ -219,3 +219,6 @@ export const formatDate = (d?: string | Date | null, withTime = false): string =
 
 export const fullName = (u?: { firstName?: string; lastName?: string } | null): string =>
   u ? `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim() : '—';
+
+/** "Estudiante" or "Estudiantes" for a comma-separated studentName (joint theses). */
+export const studentLabel = (names?: string | null) => (names?.includes(', ') ? 'Estudiantes' : 'Estudiante');

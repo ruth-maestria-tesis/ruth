@@ -32,6 +32,7 @@ import {
 } from '../files/files.service';
 import { ThesisDocument } from '../theses/schemas/thesis.schema';
 import { ThesesService } from '../theses/theses.service';
+import { isThesisStudent } from '../theses/thesis-access.policy';
 import { UsersService } from '../users/users.service';
 import { WorkflowService } from '../workflow/workflow.service';
 import { SaveEvaluationDto } from './dto/evaluation.dto';
@@ -667,7 +668,7 @@ export class EvaluationsService {
     if (
       !user.scope &&
       user.roles.includes(Role.STUDENT) &&
-      thesis.studentId.equals(user.id)
+      isThesisStudent(thesis, user.id)
     )
       return 'STUDENT';
     return null;

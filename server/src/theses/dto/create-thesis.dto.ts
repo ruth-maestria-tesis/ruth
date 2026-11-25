@@ -32,6 +32,14 @@ export class CreateThesisDto {
   @IsMongoId()
   studentId!: string;
 
+  /** Co-authors of a joint thesis, besides the main student. */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(2)
+  @ArrayUnique(lowercaseIdentifier)
+  @IsMongoId({ each: true })
+  coStudentIds?: string[];
+
   @IsMongoId()
   advisorId!: string;
 

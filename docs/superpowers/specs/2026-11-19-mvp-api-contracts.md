@@ -365,3 +365,12 @@ Order: candidates without a conflict first, then more `affinity`, then fewer `ac
 ### Client behaviour tied to these contracts
 - The juror evaluation page does not display the manuscript. It offers "Descargar documento completo (PDF)" (`GET /theses/:id/manuscripts/:fileId`) and the upload of the corrected document (`POST /evaluations/:id/corrections`), with the upload history and the reviewed version.
 - The student sees each juror's corrected documents under the submitted concept, the current one marked, and uploads a new manuscript version through the existing manuscript route.
+
+## 16. Joint theses and invitation links (2026-11-25)
+
+- **Joint theses:** `POST /theses` takes optional `coStudentIds` (up to 2 more STUDENT ids, distinct from `studentId`). `PATCH /theses/:id` can change `coStudentIds` while the thesis is `SUBMITTED`. `studentId` stays the main student. `studentName` lists every student, comma separated (`"Ana Ruiz, Beto Díaz"`).
+  - Every co-student has the same access as the main student: `GET /theses/mine`, read, manuscript upload, feedback and evaluations.
+  - Every co-student gets the student notifications.
+  - No student can be on two active theses, whether as main student or as co-student: `409 THESIS_STUDENT_HAS_ACTIVE`.
+  - A co-student that is not an active STUDENT, or that repeats the main student, gets `400 THESIS_INVALID_REFERENCE` with `details.field = "coStudentIds"`.
+- **Invitation links (client only):** each EXTERNAL_JUROR card on the thesis page shows whether its link is active and when it expires (`hasExternalLink`, `externalLinkExpiresAt`), with **Generar enlace** / **Generar nuevo enlace**. Both call `POST /assignments/:id/external-link`. A new link stops the previous one from working, because only a hash of the token is stored.

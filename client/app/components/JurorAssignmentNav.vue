@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { studentLabel } from '~/utils/i18n';
 import type { Assignment } from '~/types/api';
 
 defineProps<{ assignment: Assignment }>();
@@ -11,7 +12,7 @@ const route = useRoute();
       <v-btn icon="mdi-arrow-left" variant="text" to="/juror" aria-label="Volver" />
       <div class="flex-grow-1" style="min-width: 220px">
         <strong>Evaluando:</strong> {{ assignment.thesis?.title }}
-        <span class="text-body-2 text-medium-emphasis ml-1">(Estudiante: {{ assignment.thesis?.studentName }})</span>
+        <span class="text-body-2 text-medium-emphasis ml-1">({{ studentLabel(assignment.thesis?.studentName) }}: {{ assignment.thesis?.studentName }})</span>
       </div>
       <CountdownChip :assignment="assignment" />
     </div>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { studentLabel } from '~/utils/i18n';
 import type { ThesisSummary } from '~/types/api';
 
 /** Title strip + section links for a coordinator thesis page. */
@@ -22,7 +23,7 @@ const route = useRoute();
         <div class="text-meta">{{ thesis.code }}</div>
         <div class="text-h2-section">{{ thesis.title }}</div>
         <div class="text-body-2 text-medium-emphasis">
-          Estudiante: {{ thesis.studentName }}<template v-if="thesis.advisorName"> · Director: {{ thesis.advisorName }}</template>
+          {{ studentLabel(thesis.studentName) }}: {{ thesis.studentName }}<template v-if="thesis.advisorName"> · Director: {{ thesis.advisorName }}</template>
         </div>
       </div>
       <ThesisStatusChip :status="thesis.status" />

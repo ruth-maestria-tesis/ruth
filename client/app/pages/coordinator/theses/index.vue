@@ -42,7 +42,7 @@ const pdfUrl = computed(() => reportsApi.exportUrl('pdf', exportFilters.value));
 const headers = [
   { title: 'Código', key: 'code', sortable: true },
   { title: 'Título de la tesis', key: 'title', sortable: true, minWidth: '340px' },
-  { title: 'Estudiante', key: 'student', sortable: true, minWidth: '170px' },
+  { title: 'Estudiante(s)', key: 'student', sortable: true, minWidth: '170px' },
   { title: 'Avance', key: 'progress', sortable: true, minWidth: '120px' },
   { title: 'Estado', key: 'status', sortable: true },
   { title: 'Acciones', key: 'actions', sortable: false, align: 'end' as const },

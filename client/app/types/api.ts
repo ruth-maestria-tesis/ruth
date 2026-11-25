@@ -100,6 +100,9 @@ export interface Thesis {
   abstract?: string;
   keywords: string[];
   studentId: string;
+  /** Co-authors of a joint thesis, besides `studentId`. */
+  coStudentIds?: string[];
+  /** Every student's name, comma separated. */
   studentName: string;
   advisorId: string;
   coAdvisorIds: string[];
@@ -177,6 +180,7 @@ export interface CreateThesisInput {
   abstract?: string;
   keywords?: string[];
   studentId: string;
+  coStudentIds?: string[];
   advisorId: string;
   coAdvisorIds?: string[];
   programId: string;
@@ -184,11 +188,12 @@ export interface CreateThesisInput {
   periodId: string;
 }
 
-/** PATCH /theses/:id: student, program, cohort and period are fixed. */
+/** PATCH /theses/:id: main student, program, cohort and period are fixed. */
 export interface UpdateThesisInput {
   title?: string;
   abstract?: string;
   keywords?: string[];
+  coStudentIds?: string[];
   advisorId?: string;
   coAdvisorIds?: string[];
   conflictOfInterestUserIds?: string[];

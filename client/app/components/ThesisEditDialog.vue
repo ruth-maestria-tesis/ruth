@@ -6,8 +6,8 @@ import { ApiError } from '~/utils/http';
 import { useUiStore } from '~/stores/ui';
 
 /**
- * Edits a registered thesis (PATCH /theses/:id). Student, program, cohort and period are fixed
- * (they form the code). Advisor, co-advisors and conflicts only change before jury assignment.
+ * Edits a registered thesis (PATCH /theses/:id). Main student, program, cohort and period are fixed
+ * (they form the code). Co-students, advisor, co-advisors and conflicts only change before jury assignment.
  */
 const open = defineModel<boolean>({ default: false });
 const props = defineProps<{ thesis: Thesis }>();
@@ -18,6 +18,7 @@ const form = reactive({
   title: '',
   abstract: '',
   keywords: [] as string[],
+  coStudentIds: [] as string[],
   advisorId: null as string | null,
   coAdvisorIds: [] as string[],
   conflictOfInterestUserIds: [] as string[],
@@ -33,6 +34,7 @@ watch(open, (v) => {
     title: t.title,
     abstract: t.abstract ?? '',
     keywords: [...t.keywords],
+    coStudentIds: [...(t.coStudentIds ?? [])],
     advisorId: t.advisorId,
     coAdvisorIds: [...t.coAdvisorIds],
     conflictOfInterestUserIds: [...(t.conflictOfInterestUserIds ?? [])],
@@ -51,6 +53,7 @@ async function save() {
       abstract: form.abstract.trim(),
       keywords: form.keywords.map((k) => k.trim()).filter(Boolean),
       ...(participantsEditable.value && {
+        coStudentIds: form.coStudentIds,
         advisorId: form.advisorId!,
         coAdvisorIds: form.coAdvisorIds,
         conflictOfInterestUserIds: form.conflictOfInterestUserIds,
@@ -94,9 +97,21 @@ async function save() {
         </v-row>
         <div class="text-meta mt-4 mb-2">Participantes</div>
         <v-alert v-if="!participantsEditable" type="info" variant="tonal" density="compact" class="mb-2">
-          El director, los codirectores y los conflictos de interés solo se pueden cambiar antes de asignar jurados.
+          Los estudiantes adicionales, el director, los codirectores y los conflictos de interés solo se pueden cambiar antes de asignar jurados.
         </v-alert>
         <v-row dense>
+          <v-col cols="12">
+            <UserPicker
+              v-model="form.coStudentIds"
+              source="students"
+              label="Estudiantes adicionales (tesis conjunta, máx. 2)"
+              multiple
+              :max="2"
+              :exclude-ids="[thesis.studentId]"
+              :hint="`Estudiante principal: ${thesis.studentName.split(', ')[0]}`"
+              :disabled="!participantsEditable"
+            />
+          </v-col>
           <v-col cols="12" md="6">
             <UserPicker v-model="form.advisorId" source="faculty" label="Director *" :disabled="!participantsEditable" />
           </v-col>

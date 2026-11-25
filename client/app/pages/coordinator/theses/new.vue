@@ -12,7 +12,8 @@ const form = reactive({
   title: '',
   abstract: '',
   keywords: [] as string[],
-  studentId: null as string | null,
+  /** The first one is the main student; the rest are co-authors. */
+  studentIds: [] as string[],
   advisorId: null as string | null,
   coAdvisorIds: [] as string[],
   programId: null as string | null,
@@ -28,7 +29,7 @@ watch(programs, (p) => {
   if (!form.programId && p.length === 1) form.programId = p[0]!.id;
 }, { immediate: true });
 
-const valid = computed(() => form.title.trim() && form.studentId && form.advisorId && form.programId && form.cohortId && form.periodId);
+const valid = computed(() => form.title.trim() && form.studentIds.length && form.advisorId && form.programId && form.cohortId && form.periodId);
 
 async function submit() {
   if (!valid.value) return;
@@ -39,7 +40,8 @@ async function submit() {
       title: form.title.trim(),
       abstract: form.abstract.trim() || undefined,
       keywords: form.keywords.length ? form.keywords : undefined,
-      studentId: form.studentId!,
+      studentId: form.studentIds[0]!,
+      coStudentIds: form.studentIds.length > 1 ? form.studentIds.slice(1) : undefined,
       advisorId: form.advisorId!,
       coAdvisorIds: form.coAdvisorIds.length ? form.coAdvisorIds : undefined,
       programId: form.programId!,
@@ -77,9 +79,18 @@ async function submit() {
         <v-col cols="12" md="4"><v-select v-model="form.programId" :items="programs" item-title="name" item-value="id" label="Programa *" /></v-col>
         <v-col cols="12" md="4"><v-select v-model="form.cohortId" :items="programCohorts" item-title="name" item-value="id" label="Cohorte *" /></v-col>
         <v-col cols="12" md="4"><v-select v-model="form.periodId" :items="periods" item-title="code" item-value="id" label="Periodo *" /></v-col>
-        <v-col cols="12" md="6"><UserPicker v-model="form.studentId" source="students" label="Estudiante *" /></v-col>
+        <v-col cols="12">
+          <UserPicker
+            v-model="form.studentIds"
+            source="students"
+            label="Estudiantes * (máx. 3)"
+            multiple
+            :max="3"
+            hint="Para una tesis conjunta agregue a todos los autores. El primero queda como estudiante principal."
+          />
+        </v-col>
         <v-col cols="12" md="6"><UserPicker v-model="form.advisorId" source="faculty" label="Director *" /></v-col>
-        <v-col cols="12"><UserPicker v-model="form.coAdvisorIds" source="faculty" label="Codirectores (máx. 3)" multiple /></v-col>
+        <v-col cols="12" md="6"><UserPicker v-model="form.coAdvisorIds" source="faculty" label="Codirectores (máx. 3)" multiple :max="3" /></v-col>
         <v-col cols="12">
           <v-file-input v-model="file" label="Manuscrito (PDF, máx. 25 MB)" accept="application/pdf" prepend-icon="" prepend-inner-icon="mdi-file-pdf-box" show-size />
         </v-col>
